@@ -19,7 +19,9 @@ import {
   AutoAwesome,
   School,
   MilitaryTech,
-  Lock
+  Lock,
+  Visibility,
+  VisibilityOff
 } from "./components/Icons";
 
 type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions';
@@ -68,6 +70,7 @@ type Course = {
 
 const AdminDashboard = () => {
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(() => {
     return localStorage.getItem('admin_authorized') === 'true';
   });
@@ -108,13 +111,20 @@ const AdminDashboard = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="relative">
               <input 
-                type="password" 
+                type={showPassword ? "text" : "password"} 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="كلمة المرور"
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary font-bold text-center"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary font-bold text-center pr-12"
                 autoFocus
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
+              >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+              </button>
             </div>
             {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
             <button 

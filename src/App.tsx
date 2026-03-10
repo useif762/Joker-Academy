@@ -2422,6 +2422,7 @@ export default function App() {
 
   // Protected view check
   const renderPage = () => {
+    console.log('currentPage:', currentPage);
     const dataRequiredPages: Page[] = ['courses', 'exams', 'profile', 'exam-view', 'course-view', 'curriculum', 'leaderboard'];
     
     // Only show loading for specific item views to avoid blocking the whole app
@@ -2436,10 +2437,10 @@ export default function App() {
       );
     }
 
-    if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
-      return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
-    }
-
+    // if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
+    //   return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
+    // }
+    
     switch (currentPage) {
       case 'home': return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setSelectedGrade(g); setCurrentPage('curriculum'); }} />;
       case 'courses': return <Courses setPage={setCurrentPage} courses={courses} onSelectCourse={(id) => { setSelectedCourseId(id); setSelectedLessonIndex(null); setCurrentPage('course-view'); }} user={user} />;
