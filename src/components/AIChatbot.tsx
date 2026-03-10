@@ -33,7 +33,7 @@ export const AIChatbot = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const systemInstruction = 'أنت مساعد ذكي لطلاب منصة تعليمية. أجب على أسئلتهم بوضوح واختصار باللغة العربية، وساعدهم في فهم المواد الدراسية. استخدم تنسيق Markdown لتنظيم إجاباتك (مثل القوائم النقطية، العناوين، والنص العريض) لتكون سهلة القراءة.';
+  const systemInstruction = 'أنت مساعد ذكي لطلاب منصة تعليمية. أجب على أسئلتهم بوضوح واختصار باللغة العربية، وساعدهم في فهم المواد الدراسية. استخدم تنسيق Markdown لتنظيم إجاباتك (مثل القوائم النقطية، العناوين، والنص العريض) لتكون سهلة القراءة. ممنوع تماماً كتابة أي أكواد برمجية أو نصوص تقنية إلا إذا طلب الطالب ذلك صراحةً.';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
