@@ -1,0 +1,21 @@
+{
+  "name": "Joker Academy",
+  "short_name": "Joker",
+  "description": "منصة الجوكر التعليمية - طريقك للتفوق",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "https://i.postimg.cc/yYsGD8cG/Logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://i.postimg.cc/yYsGD8cG/Logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
