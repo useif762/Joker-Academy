@@ -3,7 +3,15 @@ import { GoogleGenAI } from '@google/genai';
 import { MessageCircle, X, Send, Bot, User as UserIcon, Paperclip, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialize lazily to prevent app crash if API key is missing in production
+let ai: GoogleGenAI | null = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+} catch (e) {
+  console.error("Failed to initialize Gemini API:", e);
+}
 
 type Message = {
   role: 'user' | 'model';
@@ -78,6 +86,10 @@ export const AIChatbot = () => {
     setIsLoading(true);
 
     try {
+      if (!ai) {
+        throw new Error("Gemini API Key is missing. Please configure it in your deployment settings.");
+      }
+
       // Build contents array for Gemini API
       // We skip the first message if it's the default greeting to ensure the conversation starts with the user
       const apiContents = newMessages
