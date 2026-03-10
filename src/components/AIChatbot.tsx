@@ -6,8 +6,10 @@ import ReactMarkdown from 'react-markdown';
 // Initialize lazily to prevent app crash if API key is missing in production
 let ai: GoogleGenAI | null = null;
 try {
-  if (process.env.GEMINI_API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  // Check for both Vite and standard environment variables
+  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
   }
 } catch (e) {
   console.error("Failed to initialize Gemini API:", e);
@@ -87,7 +89,7 @@ export const AIChatbot = () => {
 
     try {
       if (!ai) {
-        throw new Error("Gemini API Key is missing. Please configure it in your deployment settings.");
+        throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your Vercel environment variables.");
       }
 
       // Build contents array for Gemini API

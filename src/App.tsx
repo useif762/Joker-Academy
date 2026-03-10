@@ -22,6 +22,7 @@ ChartJS.register(
 
 import { useState, useEffect, FormEvent, memo, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { subscribeToCollection, saveDocument, getDocument, updateDocument } from './services/db';
 import { db } from './firebase';
 import { onSnapshot, doc } from 'firebase/firestore';
@@ -563,6 +564,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   const [userAnswers, setUserAnswers] = useState<Record<string, {selectedOption: number | string, isCorrect: boolean}>>({});
   const [textAnswer, setTextAnswer] = useState("");
   const [timeLeft, setTimeLeft] = useState<number>((exam?.duration || 30) * 60);
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const questions = exam?.questions || [];
 
@@ -724,32 +726,32 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
 
     return createPortal(
       <div className="fixed inset-0 z-[150] bg-slate-50 overflow-y-auto pb-20">
-        <div className="min-h-screen py-10 container mx-auto px-6">
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white p-8 md:p-12 rounded-3xl shadow-2xl max-w-4xl mx-auto mb-8 text-center border border-slate-100">
+        <div className="min-h-screen py-6 sm:py-10 container mx-auto px-4 sm:px-6">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white p-6 sm:p-12 rounded-3xl shadow-2xl max-w-4xl mx-auto mb-6 sm:mb-8 text-center border border-slate-100">
             {finalScore / finalTotal < 0.5 ? (
               <>
-                <div className="w-24 h-24 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 bg-red-100 text-red-500 rounded-full flex items-center justify-center text-4xl sm:text-5xl mx-auto mb-4 sm:mb-6">
                   <Close />
                 </div>
-                <h2 className="text-3xl font-black mb-2 text-red-500">درجة سيئة للأسف حاول مرة أخرى</h2>
+                <h2 className="text-2xl sm:text-3xl font-black mb-2 text-red-500">درجة سيئة للأسف حاول مرة أخرى</h2>
               </>
             ) : (
               <>
-                <div className="w-24 h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-4xl sm:text-5xl mx-auto mb-4 sm:mb-6">
                   <WorkspacePremium />
                 </div>
-                <h2 className="text-3xl font-black mb-2">أحسنت يا بطل!</h2>
+                <h2 className="text-2xl sm:text-3xl font-black mb-2">أحسنت يا بطل!</h2>
               </>
             )}
-            <p className="text-slate-500 mb-8 font-bold text-lg">لقد حصلت على {finalScore} من {finalTotal}</p>
-            <button onClick={onBack} className="px-8 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all">
+            <p className="text-slate-500 mb-6 sm:mb-8 font-bold text-base sm:text-lg">لقد حصلت على {finalScore} من {finalTotal}</p>
+            <button onClick={onBack} className="w-full sm:w-auto px-8 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all">
               {exam?.id.toString().startsWith('lesson_quiz') ? 'العودة للدرس' : 'العودة للرئيسية'}
             </button>
           </motion.div>
 
           {/* Graded Paper */}
-          <div className="max-w-4xl mx-auto space-y-6">
-            <h3 className="text-2xl font-black mb-6 flex items-center gap-2">
+          <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+            <h3 className="text-xl sm:text-2xl font-black mb-4 sm:mb-6 flex items-center gap-2">
               <MenuBook className="text-primary" /> مراجعة الإجابات
             </h3>
             {questions.map((q, i) => {
@@ -757,10 +759,10 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
               const isCorrect = userAnswer?.isCorrect;
               
               return (
-                <div key={q.id} className={`bg-white p-6 rounded-2xl shadow-sm border-2 ${isCorrect ? 'border-green-200' : 'border-red-200'}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <h4 className="font-bold text-lg leading-relaxed">{i + 1}. {q.text}</h4>
-                    <span className={`px-3 py-1 rounded-lg text-sm font-bold shrink-0 ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                <div key={q.id} className={`bg-white p-4 sm:p-6 rounded-2xl shadow-sm border-2 ${isCorrect ? 'border-green-200' : 'border-red-200'}`}>
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-4">
+                    <h4 className="font-bold text-base sm:text-lg leading-relaxed">{i + 1}. {q.text}</h4>
+                    <span className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-bold shrink-0 ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                       {isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة'}
                     </span>
                   </div>
@@ -917,8 +919,9 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                   <img 
                     src={currentQ.image} 
                     alt="Question" 
-                    className="max-h-80 rounded-2xl border border-slate-100 shadow-sm object-contain" 
+                    className="max-h-80 rounded-2xl border border-slate-100 shadow-sm object-contain cursor-zoom-in hover:scale-[1.02] transition-transform" 
                     loading="lazy"
+                    onClick={() => setZoomedImage(currentQ.image || null)}
                   />
                 </div>
               )}
@@ -1009,6 +1012,28 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                 </button>
               )}
             </div>
+
+            {/* Zoomed Image Modal */}
+            <AnimatePresence>
+              {zoomedImage && (
+                <div 
+                  className="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+                  onClick={() => setZoomedImage(null)}
+                >
+                  <motion.img 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.8, opacity: 0 }}
+                    src={zoomedImage} 
+                    className="max-w-full max-h-full object-contain rounded-xl shadow-2xl" 
+                    alt="Zoomed" 
+                  />
+                  <button className="absolute top-6 right-6 text-white bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors">
+                    <Close className="text-3xl" />
+                  </button>
+                </div>
+              )}
+            </AnimatePresence>
 
             {/* Submit Confirmation Modal */}
             <AnimatePresence>
@@ -1249,15 +1274,15 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 py-10">
-      <div className="container mx-auto px-6 max-w-5xl">
-        <div className="flex justify-between items-center mb-8">
-          <button onClick={() => setActiveLesson(null)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-primary transition-all">
+    <div className="min-h-screen bg-slate-50 py-6 sm:py-10">
+      <div className="container mx-auto px-4 sm:px-6 max-w-5xl">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
+          <button onClick={() => setActiveLesson(null)} className="flex items-center gap-2 text-slate-500 font-bold hover:text-primary transition-all text-sm sm:text-base">
             <Close /> العودة لقائمة الدروس
           </button>
           
-          <div className="w-64">
-            <div className="flex justify-between text-sm font-bold text-slate-500 mb-2">
+          <div className="w-full sm:w-64">
+            <div className="flex justify-between text-xs sm:text-sm font-bold text-slate-500 mb-2">
               <span>نسبة الإنجاز في الدورة</span>
               <span>{Math.round(((user?.completedLessons?.filter(id => lessons.some(l => l.id === id)).length || 0) / lessons.length) * 100)}%</span>
             </div>
@@ -1272,7 +1297,7 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
 
         <div>
           <div>
-            <div className="bg-black aspect-video rounded-3xl overflow-hidden shadow-2xl mb-8 flex items-center justify-center">
+            <div className="bg-black aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl mb-6 sm:mb-8 flex items-center justify-center">
               {currentLesson.type === 'youtube' && currentLesson.url ? (
                 <iframe 
                   width="100%" 
@@ -1520,54 +1545,58 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
   }, [user]);
 
   return (
-    <section className="py-20 container mx-auto px-6">
-      <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-8">
+    <section className="py-10 sm:py-20 container mx-auto px-4 sm:px-6">
+      <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-6 sm:gap-8">
         {/* Left Column: Student Info */}
-        <div className="flex flex-col gap-8">
-          <div className="bg-white p-8 rounded-3xl shadow-xl text-center border border-slate-100">
-            <div className="w-32 h-32 rounded-full mx-auto mb-6 border-4 border-primary p-1">
+        <div className="flex flex-col gap-6 sm:gap-8">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-xl text-center border border-slate-100">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full mx-auto mb-4 sm:mb-6 border-4 border-primary p-1">
               <img className="w-full h-full rounded-full object-cover" src={`https://picsum.photos/seed/${user?.phone}/200/200`} alt="Profile" referrerPolicy="no-referrer" loading="lazy" />
             </div>
-            <h2 className="text-2xl font-black mb-1">{user?.name || 'طالب متميز'}</h2>
-            <p className="text-slate-500 mb-4 font-bold">{user?.grade === '1' ? 'الصف الأول الإعدادي' : user?.grade === '2' ? 'الصف الثاني الإعدادي' : 'الصف الثالث الإعدادي'}</p>
+            <h2 className="text-xl sm:text-2xl font-black mb-1">{user?.name || 'طالب متميز'}</h2>
+            <p className="text-slate-500 mb-4 font-bold text-sm sm:text-base">{user?.grade === '1' ? 'الصف الأول الإعدادي' : user?.grade === '2' ? 'الصف الثاني الإعدادي' : 'الصف الثالث الإعدادي'}</p>
             
             <div className="bg-slate-50 p-4 rounded-2xl mb-6 text-right space-y-2">
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-slate-400">كود الطالب:</span>
                 <span className="font-black text-primary">{user?.studentId || '---'}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-slate-400">رقم الهاتف:</span>
                 <span className="font-bold">{user?.phone}</span>
               </div>
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center text-xs sm:text-sm">
                 <span className="text-slate-400">تاريخ الانضمام:</span>
                 <span className="font-bold">{user?.joinDate || '---'}</span>
               </div>
             </div>
 
             <div className="flex justify-center gap-4">
-              <div className="bg-accent/10 p-3 rounded-xl text-accent"><Badge /></div>
-              <div className="bg-primary/10 p-3 rounded-xl text-primary"><MilitaryTech /></div>
+              <div className="bg-accent/10 p-2 sm:p-3 rounded-xl text-accent"><Badge /></div>
+              <div className="bg-primary/10 p-2 sm:p-3 rounded-xl text-primary"><MilitaryTech /></div>
             </div>
           </div>
           
-          <div className="bg-primary p-8 rounded-3xl text-white shadow-xl shadow-primary/20">
+          <div className="bg-primary p-6 sm:p-8 rounded-3xl text-white shadow-xl shadow-primary/20">
             <h3 className="font-bold mb-4 flex items-center gap-2"><TrendingUp /> إحصائياتي</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div><p className="text-xs opacity-70">النقاط</p><p className="text-2xl font-black">{stats.points}</p></div>
-              <div><p className="text-xs opacity-70">الدروس</p><p className="text-2xl font-black">{stats.lessons}</p></div>
-              <div><p className="text-xs opacity-70">الامتحانات</p><p className="text-2xl font-black">{stats.exams}</p></div>
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+              <div><p className="text-[10px] sm:text-xs opacity-70">النقاط</p><p className="text-xl sm:text-2xl font-black">{stats.points}</p></div>
+              <div><p className="text-[10px] sm:text-xs opacity-70">الدروس</p><p className="text-xl sm:text-2xl font-black">{stats.lessons}</p></div>
+              <div><p className="text-[10px] sm:text-xs opacity-70">الامتحانات</p><p className="text-xl sm:text-2xl font-black">{stats.exams}</p></div>
             </div>
           </div>
 
-          <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-            <h3 className="text-2xl font-black mb-6">تطور الأداء</h3>
-            {user?.examResults && user.examResults.length > 0 ? (
-              <Line data={chartData} options={{ responsive: true }} />
-            ) : (
-              <p className="text-center text-slate-400 py-8">لا توجد بيانات كافية للرسم البياني</p>
-            )}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-100 overflow-hidden">
+            <h3 className="text-xl sm:text-2xl font-black mb-6">تطور الأداء</h3>
+            <div className="w-full overflow-x-auto">
+              {user?.examResults && user.examResults.length > 0 ? (
+                <div className="min-w-[300px]">
+                  <Line data={chartData} options={{ responsive: true, maintainAspectRatio: true }} />
+                </div>
+              ) : (
+                <p className="text-center text-slate-400 py-8">لا توجد بيانات كافية للرسم البياني</p>
+              )}
+            </div>
           </div>
         </div>
         
@@ -2100,9 +2129,16 @@ const LoadingScreen = () => (
 // --- Main App ---
 
 export default function App() {
-  const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const [isLoading, setIsLoading] = useState(() => {
+    return !sessionStorage.getItem('joker_loaded');
+  });
+  
   const [currentPage, setCurrentPage] = useState<Page>(() => {
-    return (localStorage.getItem('joker_page') as Page) || 'home';
+    const hash = window.location.hash.replace('#/', '').split('?')[0];
+    return (hash as Page) || (localStorage.getItem('joker_page') as Page) || 'home';
   });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
@@ -2114,21 +2150,59 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
-  const [selectedGrade, setSelectedGrade] = useState<string>('1');
-  const [selectedLessonIndex, setSelectedLessonIndex] = useState<number | null>(null);
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(() => localStorage.getItem('joker_selected_course'));
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(() => localStorage.getItem('joker_selected_exam'));
+  const [selectedGrade, setSelectedGrade] = useState<string>(() => localStorage.getItem('joker_selected_grade') || '1');
+  const [selectedLessonIndex, setSelectedLessonIndex] = useState<number | null>(() => {
+    const saved = localStorage.getItem('joker_selected_lesson');
+    return saved ? parseInt(saved) : null;
+  });
+
+  useEffect(() => {
+    if (selectedCourseId) localStorage.setItem('joker_selected_course', selectedCourseId);
+    else localStorage.removeItem('joker_selected_course');
+  }, [selectedCourseId]);
+
+  useEffect(() => {
+    if (selectedExamId) localStorage.setItem('joker_selected_exam', selectedExamId);
+    else localStorage.removeItem('joker_selected_exam');
+  }, [selectedExamId]);
+
+  useEffect(() => {
+    localStorage.setItem('joker_selected_grade', selectedGrade);
+  }, [selectedGrade]);
+
+  useEffect(() => {
+    if (selectedLessonIndex !== null) localStorage.setItem('joker_selected_lesson', selectedLessonIndex.toString());
+    else localStorage.removeItem('joker_selected_lesson');
+  }, [selectedLessonIndex]);
 
   useEffect(() => {
     localStorage.setItem('joker_page', currentPage);
-  }, [currentPage]);
+    // Sync URL with state
+    const currentHash = window.location.hash.replace('#/', '').split('?')[0];
+    if (currentHash !== currentPage) {
+      navigate(`/${currentPage}${window.location.search}`);
+    }
+  }, [currentPage, navigate]);
+
+  // Sync state with URL changes (back/forward button)
+  useEffect(() => {
+    const hash = location.pathname.replace('/', '') || 'home';
+    if (hash !== currentPage) {
+      setCurrentPage(hash as Page);
+    }
+  }, [location, currentPage]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, []);
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setIsLoading(false);
+        sessionStorage.setItem('joker_loaded', 'true');
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading]);
 
   useEffect(() => {
     const unsubscribeCourses = subscribeToCollection('courses', (data) => {

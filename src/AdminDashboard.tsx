@@ -18,7 +18,8 @@ import {
   MenuBook,
   AutoAwesome,
   School,
-  MilitaryTech
+  MilitaryTech,
+  Lock
 } from "./components/Icons";
 
 type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions';
@@ -66,6 +67,75 @@ type Course = {
 };
 
 const AdminDashboard = () => {
+  const [password, setPassword] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(() => {
+    return localStorage.getItem('admin_authorized') === 'true';
+  });
+  const [error, setError] = useState("");
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Simple password check
+    if (password === "joker2025" || password === "admin123") {
+      setIsAuthorized(true);
+      localStorage.setItem('admin_authorized', 'true');
+      setError("");
+    } else {
+      setError("كلمة المرور غير صحيحة");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthorized(false);
+    localStorage.removeItem('admin_authorized');
+    window.location.href = '/#/';
+  };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border border-slate-100"
+        >
+          <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="text-4xl" />
+          </div>
+          <h2 className="text-2xl font-black mb-2 text-slate-800">لوحة تحكم الجوكر</h2>
+          <p className="text-slate-500 mb-8 font-bold text-sm">يرجى إدخال كلمة مرور المشرف للمتابعة</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="كلمة المرور"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary font-bold text-center"
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+            <button 
+              type="submit"
+              className="w-full py-4 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
+            >
+              دخول المشرف
+            </button>
+            <button 
+              type="button"
+              onClick={() => window.location.href = '/#/'}
+              className="w-full py-2 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
+            >
+              العودة للمنصة الرئيسية
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
+
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('tab') as AdminTab) || 'students';
