@@ -1,6 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
-import { HashRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.tsx';
 import AdminDashboard from './AdminDashboard.tsx';
 import './index.css';
@@ -17,7 +17,7 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <HashRouter>
+    <BrowserRouter>
       <Routes>
         <Route path="/" element={<App />} />
         <Route path="/joker-admin" element={<AdminDashboard />} />
@@ -25,6 +25,6 @@ createRoot(document.getElementById('root')!).render(
         <Route path="/jokeradmin" element={<AdminDashboard />} />
         <Route path="*" element={<App />} />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   </StrictMode>
 );

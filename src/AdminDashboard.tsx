@@ -88,7 +88,7 @@ const AdminDashboard = () => {
   const handleLogout = () => {
     setIsAuthorized(false);
     localStorage.removeItem('admin_authorized');
-    window.location.href = '/#/';
+    window.location.href = '/';
   };
 
   if (!isAuthorized) {
@@ -125,7 +125,7 @@ const AdminDashboard = () => {
             </button>
             <button 
               type="button"
-              onClick={() => window.location.href = '/#/'}
+              onClick={() => window.location.href = '/'}
               className="w-full py-2 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
             >
               العودة للمنصة الرئيسية
@@ -267,8 +267,8 @@ const AdminDashboard = () => {
       formData.append('resource_type', 'auto');
 
       const xhr = new XMLHttpRequest();
-      // نستخدم /auto/upload لضمان قبول كل أنواع الملفات
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`, true);
+      // نستخدم الـ endpoint الصحيح لـ Cloudinary مع تحديد الـ resource_type في الـ FormData
+      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
 
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {

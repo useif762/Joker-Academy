@@ -706,7 +706,18 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   };
 
   const currentQ = questions[currentQuestion];
-  const currentAnswer = userAnswers[currentQ.id];
+  const currentAnswer = currentQ ? userAnswers[currentQ.id] : null;
+
+  if (!exam || !currentQ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 font-bold">جاري تحميل الامتحان...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isFinished) {
     // Recalculate score for display
@@ -1350,18 +1361,32 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                     
                     {showPdf ? (
                       <div className="space-y-4">
-                        <iframe 
-                          src={`https://docs.google.com/viewer?url=${encodeURIComponent(currentLesson.pdfUrl)}&embedded=true`} 
-                          className="w-full h-[600px] rounded-xl border border-slate-200 bg-white"
-                          title="PDF Viewer"
-                          loading="lazy"
-                        />
-                        <button 
-                          onClick={() => setShowPdf(false)}
-                          className="w-full py-2 text-slate-500 font-bold hover:text-primary transition-all text-sm"
-                        >
-                          إخفاء الملف
-                        </button>
+                        <div className="relative w-full h-[600px] rounded-xl border border-slate-200 bg-white overflow-hidden">
+                          <iframe 
+                            src={currentLesson.pdfUrl.includes('cloudinary') 
+                              ? currentLesson.pdfUrl 
+                              : `https://docs.google.com/viewer?url=${encodeURIComponent(currentLesson.pdfUrl)}&embedded=true`} 
+                            className="w-full h-full"
+                            title="PDF Viewer"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button 
+                            onClick={() => setShowPdf(false)}
+                            className="flex-1 py-2 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200 transition-all text-sm"
+                          >
+                            إخفاء الملف
+                          </button>
+                          <a 
+                            href={currentLesson.pdfUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex-1 py-2 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all text-sm text-center"
+                          >
+                            فتح في نافذة جديدة
+                          </a>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex gap-3">
@@ -2132,14 +2157,24 @@ export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
   
+  const currentPage = useMemo(() => {
+    const path = location.pathname.replace(/^\//, '').split('?')[0];
+    if (path === '' || path === 'home') return 'home';
+    return (path as Page) || 'home';
+  }, [location.pathname]);
+
+  const setCurrentPage = (page: Page) => {
+    const targetPath = page === 'home' ? '' : page;
+    const currentPath = location.pathname.replace(/^\//, '').split('?')[0];
+    if (currentPath !== targetPath) {
+      navigate(`/${targetPath}${location.search}`);
+    }
+  };
+
   const [isLoading, setIsLoading] = useState(() => {
     return !sessionStorage.getItem('joker_loaded');
   });
   
-  const [currentPage, setCurrentPage] = useState<Page>(() => {
-    const hash = window.location.hash.replace('#/', '').split('?')[0];
-    return (hash as Page) || (localStorage.getItem('joker_page') as Page) || 'home';
-  });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem('joker_user');
@@ -2179,20 +2214,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('joker_page', currentPage);
-    // Sync URL with state
-    const currentHash = window.location.hash.replace('#/', '').split('?')[0];
-    if (currentHash !== currentPage) {
-      navigate(`/${currentPage}${window.location.search}`);
-    }
-  }, [currentPage, navigate]);
-
-  // Sync state with URL changes (back/forward button)
-  useEffect(() => {
-    const hash = location.pathname.replace('/', '') || 'home';
-    if (hash !== currentPage) {
-      setCurrentPage(hash as Page);
-    }
-  }, [location, currentPage]);
+  }, [currentPage]);
 
   useEffect(() => {
     if (isLoading) {
@@ -2204,12 +2226,24 @@ export default function App() {
     }
   }, [isLoading]);
 
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  useEffect(() => {
+    // Safety fallback for data loading - ensure UI isn't stuck if Firestore is slow or empty
+    const timer = setTimeout(() => {
+      setIsDataLoaded(true);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     const unsubscribeCourses = subscribeToCollection('courses', (data) => {
       setCourses(data as Course[]);
+      setIsDataLoaded(true);
     });
     const unsubscribeExams = subscribeToCollection('exams', (data) => {
       setExams(data as Exam[]);
+      setIsDataLoaded(true);
     });
 
     return () => {
@@ -2376,7 +2410,21 @@ export default function App() {
 
   // Protected view check
   const renderPage = () => {
-    if ((currentPage === 'courses' || currentPage === 'exams' || currentPage === 'profile' || currentPage === 'exam-view' || currentPage === 'course-view') && !user) {
+    const dataRequiredPages: Page[] = ['courses', 'exams', 'profile', 'exam-view', 'course-view', 'curriculum', 'leaderboard'];
+    
+    // Only show loading for specific item views to avoid blocking the whole app
+    if (!isDataLoaded && (currentPage === 'exam-view' || currentPage === 'course-view')) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background-light">
+          <div className="text-center">
+            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-primary font-black text-xl">جاري تحميل البيانات...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
       return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
     }
 
@@ -2392,8 +2440,22 @@ export default function App() {
         setSelectedLessonIndex(lessonIndex);
         setCurrentPage('course-view');
       }} />;
-      case 'exam-view': return <ExamView onBack={() => setCurrentPage('exams')} exam={exams.find(e => e.id === selectedExamId) || null} user={user} onUpdateUser={handleLogin} />;
-      case 'course-view': return <CourseView onBack={() => setCurrentPage('courses')} course={courses.find(c => c.id === selectedCourseId) || null} user={user} onUpdateUser={handleLogin} initialLessonIndex={selectedLessonIndex ?? undefined} />;
+      case 'exam-view': {
+        const exam = exams.find(e => e.id === selectedExamId);
+        if (!exam && isDataLoaded && exams.length > 0) {
+          setTimeout(() => setCurrentPage('exams'), 0);
+          return null;
+        }
+        return <ExamView onBack={() => setCurrentPage('exams')} exam={exam || null} user={user} onUpdateUser={handleLogin} />;
+      }
+      case 'course-view': {
+        const course = courses.find(c => c.id === selectedCourseId);
+        if (!course && isDataLoaded && courses.length > 0) {
+          setTimeout(() => setCurrentPage('courses'), 0);
+          return null;
+        }
+        return <CourseView onBack={() => setCurrentPage('courses')} course={course || null} user={user} onUpdateUser={handleLogin} initialLessonIndex={selectedLessonIndex ?? undefined} />;
+      }
       default: return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setSelectedGrade(g); setCurrentPage('curriculum'); }} />;
     }
   };
