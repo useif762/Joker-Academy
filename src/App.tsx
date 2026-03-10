@@ -590,6 +590,8 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!isFinished) {
+        // Attempt to auto-submit before leaving
+        finishExam();
         e.preventDefault();
         e.returnValue = '';
       }
@@ -597,6 +599,17 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isFinished]);
+
+  // Disable back button
+  useEffect(() => {
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      alert("لا يمكنك الرجوع أثناء الامتحان!");
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

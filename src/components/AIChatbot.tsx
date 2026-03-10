@@ -116,7 +116,7 @@ export const AIChatbot = () => {
         });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.1-pro-preview',
         contents: apiContents,
         config: {
           systemInstruction,
@@ -127,7 +127,9 @@ export const AIChatbot = () => {
       setMessages(prev => [...prev, { role: 'model', text: response.text || 'عذراً، لم أتمكن من فهم ذلك.' }]);
     } catch (error) {
       console.error('Error calling Gemini API:', error);
-      setMessages(prev => [...prev, { role: 'model', text: 'عذراً، حدث خطأ في الاتصال. يرجى المحاولة لاحقاً.' }]);
+      // Provide more specific error info if possible
+      const errorMessage = error instanceof Error ? error.message : 'حدث خطأ غير معروف';
+      setMessages(prev => [...prev, { role: 'model', text: `عذراً، حدث خطأ في الاتصال. يرجى المحاولة لاحقاً. (${errorMessage})` }]);
     } finally {
       setIsLoading(false);
     }
