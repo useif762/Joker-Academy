@@ -62,7 +62,6 @@ import {
   LightMode,
 } from "./components/Icons";
 
-import { AIChatbot } from './components/AIChatbot';
 import { LessonComments } from './components/LessonComments';
 
 // --- Types ---
@@ -2574,8 +2573,6 @@ export default function App() {
         </footer>
       )}
       
-      {/* AI Chatbot */}
-      {user && <AIChatbot />}
     </div>
   );
 }

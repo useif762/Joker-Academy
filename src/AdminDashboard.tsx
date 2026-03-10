@@ -76,7 +76,7 @@ const AdminDashboard = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     // Simple password check
-    if (password === "joker2025" || password === "admin123") {
+    if (password === "Joker_Academy_Admin_2026_#Secure!0223190#1319/257") {
       setIsAuthorized(true);
       localStorage.setItem('admin_authorized', 'true');
       setError("");
