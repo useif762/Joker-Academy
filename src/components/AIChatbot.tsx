@@ -89,7 +89,7 @@ export const AIChatbot = () => {
 
     try {
       if (!ai) {
-        throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your Vercel environment variables.");
+        throw new Error("مفتاح API الخاص بـ Gemini مفقود. يرجى إضافة VITE_GEMINI_API_KEY في إعدادات Vercel (Environment Variables).");
       }
 
       // Build contents array for Gemini API
