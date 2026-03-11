@@ -2212,7 +2212,7 @@ export default function App() {
   const currentPage = useMemo(() => {
     const path = location.pathname.replace(/^\//, '').split('?')[0];
     if (path === '' || path === 'home') {
-      return (localStorage.getItem('joker_page') as Page) || 'home';
+      return 'home';
     }
     return (path as Page) || 'home';
   }, [location.pathname]);
@@ -2225,7 +2225,7 @@ export default function App() {
     }
   };
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => !sessionStorage.getItem('joker_loaded'));
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
@@ -2271,7 +2271,7 @@ export default function App() {
   }, [selectedLessonIndex]);
 
   useEffect(() => {
-    localStorage.setItem('joker_page', currentPage);
+    // We no longer save joker_page to localStorage since we use URL routing
   }, [currentPage]);
 
   useEffect(() => {
@@ -2285,23 +2285,33 @@ export default function App() {
   }, [isLoading]);
 
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [coursesLoaded, setCoursesLoaded] = useState(false);
+  const [examsLoaded, setExamsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (coursesLoaded && examsLoaded) {
+      setIsDataLoaded(true);
+    }
+  }, [coursesLoaded, examsLoaded]);
 
   useEffect(() => {
     // Safety fallback for data loading - ensure UI isn't stuck if Firestore is slow or empty
     const timer = setTimeout(() => {
+      setCoursesLoaded(true);
+      setExamsLoaded(true);
       setIsDataLoaded(true);
-    }, 3000);
+    }, 10000);
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
     const unsubscribeCourses = subscribeToCollection('courses', (data) => {
       setCourses(data as Course[]);
-      setIsDataLoaded(true);
+      setCoursesLoaded(true);
     });
     const unsubscribeExams = subscribeToCollection('exams', (data) => {
       setExams(data as Exam[]);
-      setIsDataLoaded(true);
+      setExamsLoaded(true);
     });
 
     return () => {
@@ -2485,7 +2495,7 @@ export default function App() {
       }} />;
       case 'exam-view': {
         const exam = exams.find(e => e.id === selectedExamId);
-        if (!exam && isDataLoaded) {
+        if (!exam && examsLoaded && !isLoading) {
           setTimeout(() => setCurrentPage('exams'), 0);
           return null;
         }
@@ -2493,7 +2503,7 @@ export default function App() {
       }
       case 'course-view': {
         const course = courses.find(c => c.id === selectedCourseId);
-        if (!course && isDataLoaded) {
+        if (!course && coursesLoaded && !isLoading) {
           setTimeout(() => setCurrentPage('courses'), 0);
           return null;
         }
