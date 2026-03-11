@@ -2449,9 +2449,9 @@ export default function App() {
       );
     }
 
-    // if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
-    //   return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
-    // }
+    if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
+      return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
+    }
     
     switch (currentPage) {
       case 'home': return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setSelectedGrade(g); setCurrentPage('curriculum'); }} />;
