@@ -1725,7 +1725,7 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
                 <h3 className="text-2xl font-black mb-6">نتائج الامتحانات</h3>
                 <div className="flex flex-col gap-4">
                   {user?.examResults && user.examResults.length > 0 ? (
-                    user.examResults.map((result, i) => (
+                    (user.examResults || []).map((result, i) => (
                       <div key={i} className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
                         <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-primary shadow-sm"><Quiz /></div>
                         <div className="flex-1">
@@ -1755,7 +1755,7 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
                 <h3 className="text-2xl font-black mb-6">الدروس المكتملة</h3>
                 <div className="flex flex-col gap-4">
                   {user?.completedLessons && user.completedLessons.length > 0 ? (
-                    user.completedLessons.map((lessonId, i) => {
+                    (user.completedLessons || []).map((lessonId, i) => {
                       // Try to find the lesson title from courses
                       let lessonTitle = "درس تعليمي";
                       courses.forEach(c => {

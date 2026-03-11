@@ -166,7 +166,7 @@ const AdminDashboard = () => {
     const { student, result } = selectedResult;
     
     // Update local state
-    const updatedResults = student.examResults.map((r: any) => 
+    const updatedResults = (student.examResults || []).map((r: any) => 
       r.examId === result.examId ? { ...r, score: newScore } : r
     );
     
@@ -819,7 +819,7 @@ const AdminDashboard = () => {
                             </h4>
                             <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                               {student.examResults && student.examResults.length > 0 ? (
-                                student.examResults.map((result: any, idx: number) => (
+                                (student.examResults || []).map((result: any, idx: number) => (
                                   <div key={result.examId || idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                                     <div>
                                       <p className="text-sm font-bold">{result.examTitle}</p>
@@ -853,10 +853,10 @@ const AdminDashboard = () => {
                             </h4>
                             <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
                               {student.completedLessons && student.completedLessons.length > 0 ? (
-                                student.completedLessons.map((lessonId: string, idx: number) => {
+                                (student.completedLessons || []).map((lessonId: string, idx: number) => {
                                   let lessonTitle = "درس تعليمي";
                                   courses.forEach(c => {
-                                    const lesson = c.lessons.find(l => l.id === lessonId);
+                                    const lesson = (c.lessons || []).find(l => l.id === lessonId);
                                     if (lesson) lessonTitle = `${c.title} - ${lesson.title}`;
                                   });
                                   return (
@@ -1381,7 +1381,7 @@ const AdminDashboard = () => {
                 {/* Lessons List */}
                 <div className="space-y-4">
                   <h4 className="text-lg font-bold text-slate-700">دروس الدورة الحالية</h4>
-                  {editingCourse.lessons.map((lesson, idx) => (
+                  {(editingCourse.lessons || []).map((lesson, idx) => (
                     <div key={lesson.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <span className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center font-bold text-slate-400 text-xs">{idx + 1}</span>
@@ -1437,7 +1437,7 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   ))}
-                  {editingCourse.lessons.length === 0 && (
+                  {(editingCourse.lessons || []).length === 0 && (
                     <div className="text-center py-10 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
                       لا يوجد دروس في هذه الدورة بعد
                     </div>
@@ -1589,7 +1589,7 @@ const AdminDashboard = () => {
               </div>
 
               <div className="space-y-6">
-                {editingExam.questions.map((q, idx) => (
+                {(editingExam.questions || []).map((q, idx) => (
                   <div key={q.id} className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 relative group">
                     <div className="flex flex-col gap-4 mb-6">
                       <div className="flex items-center justify-between">
