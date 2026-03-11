@@ -24,13 +24,13 @@ import {
   VisibilityOff
 } from "./components/Icons";
 
-type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions';
+type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions' | 'grading';
 
 type Question = {
   id: string;
   text: string;
   image?: string;
-  type?: 'multiple-choice' | 'true-false' | 'text';
+  type?: 'multiple-choice' | 'true-false' | 'text' | 'who-is-responsible' | 'prove' | 'support-with-phrase' | 'complete';
   options: string[];
   correctAnswer: number | string;
   score: number;
@@ -39,6 +39,7 @@ type Question = {
 type Exam = {
   id: string;
   title: string;
+  grade?: string;
   questions: Question[];
   duration?: number;
   totalScore?: number;
@@ -75,6 +76,7 @@ const AdminDashboard = () => {
     return localStorage.getItem('admin_authorized') === 'true';
   });
   const [error, setError] = useState("");
+
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,6 +152,7 @@ const AdminDashboard = () => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('tab') as AdminTab) || 'students';
   });
+  const [gradingView, setGradingView] = useState<{grade: string | null, examId: string | null, questionId: string | null}>({grade: null, examId: null, questionId: null});
   const [searchTerm, setSearchTerm] = useState("");
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [selectedResult, setSelectedResult] = useState<{student: any, result: any} | null>(null);
@@ -215,6 +218,7 @@ const AdminDashboard = () => {
   // --- Exams State ---
   const [exams, setExams] = useState<Exam[]>([]);
   const [newExamTitle, setNewExamTitle] = useState("");
+  const [newExamGrade, setNewExamGrade] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
   const [isUploading, _setIsUploading] = useState(false);
   const setIsUploading = (value: boolean) => {
@@ -243,8 +247,8 @@ const AdminDashboard = () => {
   useEffect(() => {
     let unsubscribeUsers = () => {};
     
-    // Only subscribe to users if we are on the students or stats tab
-    if (activeTab === 'students' || activeTab === 'stats') {
+    // Only subscribe to users if we are on the students, stats, or grading tab
+    if (activeTab === 'students' || activeTab === 'stats' || activeTab === 'grading') {
       unsubscribeUsers = subscribeToCollection('users', (data) => {
         setStudents(data);
       });
@@ -497,10 +501,11 @@ const AdminDashboard = () => {
   const [newExamTotalScore, setNewExamTotalScore] = useState<number | ''>(100);
 
   const handleAddExam = async () => {
-    if (newExamTitle) {
+    if (newExamTitle && newExamGrade) {
       const newExam: Exam = { 
         id: Date.now().toString(), 
         title: newExamTitle, 
+        grade: newExamGrade,
         questions: [],
         duration: newExamDuration || 30,
         totalScore: newExamTotalScore || 100,
@@ -510,11 +515,14 @@ const AdminDashboard = () => {
       setExams(updatedExams);
       await saveDocument('exams', newExam.id, newExam);
       setNewExamTitle("");
+      setNewExamGrade("");
       setNewExamDuration(30);
       setNewExamTotalScore(100);
       alert("تم إنشاء الامتحان! يمكنك الآن إضافة الأسئلة.");
       setEditingExam(newExam);
       setActiveTab('edit-exam');
+    } else {
+      alert("يرجى إدخال اسم الامتحان واختيار الصف الدراسي.");
     }
   };
 
@@ -654,6 +662,12 @@ const AdminDashboard = () => {
               className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'questions' ? 'bg-purple-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
             >
               أسئلة الطلاب
+            </button>
+            <button 
+              onClick={() => setActiveTab('grading')}
+              className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'grading' ? 'bg-emerald-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              تصحيح الأسئلة
             </button>
           </div>
         </div>
@@ -885,14 +899,271 @@ const AdminDashboard = () => {
             </motion.div>
           )}
 
+          {activeTab === 'grading' && (
+            <motion.div 
+              key="grading"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-black text-slate-800">تصحيح الأسئلة المقالية</h2>
+                {(gradingView.grade || gradingView.examId || gradingView.questionId) && (
+                  <button onClick={() => {
+                    if (gradingView.questionId) setGradingView({...gradingView, questionId: null});
+                    else if (gradingView.examId) setGradingView({...gradingView, examId: null});
+                    else if (gradingView.grade) setGradingView({...gradingView, grade: null});
+                  }} className="text-sm text-primary font-bold bg-primary/10 px-4 py-2 rounded-xl hover:bg-primary/20 transition-all">العودة للخلف</button>
+                )}
+              </div>
+              
+              {(() => {
+                // 1. Grouping logic
+                const grouped: any = { '1': { exams: {} }, '2': { exams: {} }, '3': { exams: {} } };
+                const gradeNames: Record<string, string> = { '1': 'الصف الأول الإعدادي', '2': 'الصف الثاني الإعدادي', '3': 'الصف الثالث الإعدادي' };
+
+                students.forEach(student => {
+                  const sGrade = student.grade || '1';
+                  if (!grouped[sGrade]) grouped[sGrade] = { exams: {} };
+
+                  (student.examResults || []).forEach((result: any) => {
+                    const exam = exams.find(e => e.id === result.examId);
+                    if (!exam) return;
+                    
+                    const hasEssayQuestions = exam.questions.some(q => ['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || ''));
+                    if (!hasEssayQuestions) return;
+                    
+                    if (!grouped[sGrade].exams[exam.id]) {
+                      grouped[sGrade].exams[exam.id] = { title: exam.title, questions: {} };
+                      exam.questions.forEach(q => {
+                        if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || '')) {
+                          grouped[sGrade].exams[exam.id].questions[q.id] = { text: q.text, answers: [] };
+                        }
+                      });
+                    }
+                    
+                    (result.answers || []).forEach((answer: any) => {
+                      const question = exam.questions.find(q => q.id === answer.questionId);
+                      if (!question || !['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(question.type || '')) return;
+                      
+                      if (answer.status === 'pending' || answer.status === undefined) {
+                        if (grouped[sGrade].exams[exam.id].questions[question.id]) {
+                          grouped[sGrade].exams[exam.id].questions[question.id].answers.push({ student, answer, result });
+                        }
+                      }
+                    });
+                  });
+                });
+
+                // 2. Navigation logic
+                if (!gradingView.grade) {
+                  // View Grades
+                  return (
+                    <div className="grid md:grid-cols-3 gap-6">
+                      {['1', '2', '3'].map(grade => {
+                        const totalStudents = students.filter(s => s.grade === grade).length;
+                        const pendingExamsCount = Object.keys(grouped[grade]?.exams || {}).length;
+                        
+                        return (
+                          <button 
+                            key={grade} 
+                            onClick={() => setGradingView({...gradingView, grade})} 
+                            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-slate-100 hover:border-primary transition-all text-right group"
+                          >
+                            <div className="w-16 h-16 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                              <School className="text-3xl" />
+                            </div>
+                            <h3 className="text-xl font-black mb-2">{gradeNames[grade]}</h3>
+                            <p className="text-slate-500 font-bold mb-4">إجمالي الطلاب: {totalStudents}</p>
+                            <div className="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-sm font-bold inline-block">
+                              {pendingExamsCount} امتحانات بها أسئلة مقالية
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                if (!gradingView.examId) {
+                  // View Exams in Grade
+                  const gradeExams = grouped[gradingView.grade]?.exams || {};
+                  const examIds = Object.keys(gradeExams);
+                  
+                  if (examIds.length === 0) return <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-3xl border border-slate-100">لا توجد امتحانات بها أسئلة مقالية في هذا الصف</div>;
+                  
+                  return (
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {examIds.map(id => {
+                        const totalStudentsInGrade = students.filter(s => s.grade === gradingView.grade).length;
+                        const studentsTookExam = students.filter(s => s.grade === gradingView.grade && s.examResults?.some((r:any) => r.examId === id)).length;
+                        const pendingQuestionsCount = Object.keys(gradeExams[id].questions).filter(qId => gradeExams[id].questions[qId].answers.length > 0).length;
+
+                        return (
+                          <div key={id} className="bg-slate-100 p-6 rounded-t-xl rounded-b-3xl border-t-8 border-primary shadow-md relative group">
+                            <div className="absolute top-4 left-4 text-slate-300">
+                              <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                            </div>
+                            <h3 className="text-xl font-black mb-4 pr-2">{gradeExams[id].title}</h3>
+                            <div className="space-y-2 mb-6">
+                              <p className="text-sm font-bold text-slate-600">عدد طلاب الصف الدراسي: <span className="text-primary">{totalStudentsInGrade}</span></p>
+                              <p className="text-sm font-bold text-slate-600">عدد الطلاب الذين قاموا بحل الاختبار: <span className="text-primary">{studentsTookExam}</span></p>
+                              <p className="text-sm font-bold text-slate-600">أسئلة مقالية للتقييم: <span className="text-orange-500">{pendingQuestionsCount}</span></p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => setGradingView({...gradingView, examId: id})} 
+                                className="flex-1 bg-white text-primary border-2 border-primary py-2 rounded-xl font-bold hover:bg-primary hover:text-white transition-all"
+                              >
+                                فتح الامتحان
+                              </button>
+                              <button 
+                                onClick={async () => {
+                                  if(window.confirm('هل أنت متأكد من إنهاء التصحيح وإرسال الإشعارات للطلاب؟')) {
+                                    const updatedStudents = students.map(student => {
+                                      if (student.examResults?.some((r:any) => r.examId === id)) {
+                                          const newNotification = {
+                                              id: Date.now().toString() + Math.random(),
+                                              title: 'تم تصحيح الامتحان',
+                                              message: `تم تصحيح إجاباتك لامتحان: ${gradeExams[id].title}. يمكنك الآن مراجعة نتيجتك النهائية.`,
+                                              date: new Date().toLocaleString('ar-EG'),
+                                              read: false
+                                          };
+                                          return {
+                                              ...student,
+                                              notifications: [newNotification, ...(student.notifications || [])]
+                                          };
+                                      }
+                                      return student;
+                                    });
+                                    setStudents(updatedStudents);
+                                    for (const student of updatedStudents) {
+                                        if (student.examResults?.some((r:any) => r.examId === id)) {
+                                            await saveDocument('users', student.phone, student);
+                                        }
+                                    }
+                                    alert('تم إرسال الإشعارات للطلاب بنجاح!');
+                                  }
+                                }}
+                                className="flex-1 bg-emerald-500 text-white py-2 rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200"
+                              >
+                                تم التصحيح
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                if (!gradingView.questionId) {
+                  // View Questions in Exam
+                  const questions = grouped[gradingView.grade]?.exams?.[gradingView.examId]?.questions || {};
+                  
+                  if (Object.keys(questions).length === 0) {
+                    return <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-3xl border border-slate-100">تم تصحيح جميع أسئلة هذا الامتحان</div>;
+                  }
+                  
+                  return (
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {Object.keys(questions).map(qid => (
+                        <button key={qid} onClick={() => setGradingView({...gradingView, questionId: qid})} className="bg-slate-100 p-6 rounded-t-xl rounded-b-3xl border-t-8 border-secondary shadow-md relative text-right group hover:-translate-y-1 transition-transform">
+                          <div className="absolute top-4 left-4 text-slate-300">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                          </div>
+                          <h3 className="text-lg font-black mb-4 pr-2 line-clamp-2">{questions[qid].text}</h3>
+                          <div className="bg-white text-secondary px-4 py-2 rounded-xl text-sm font-bold inline-block">
+                            {questions[qid].answers.length} إجابات تحتاج للتقييم
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                }
+
+                // View Answers for Question
+                const answers = grouped[gradingView.grade]?.exams?.[gradingView.examId]?.questions?.[gradingView.questionId]?.answers || [];
+                
+                if (answers.length === 0) {
+                  return <div className="text-center py-20 text-slate-400 font-bold bg-white rounded-3xl border border-slate-100">تم تصحيح جميع الإجابات لهذا السؤال</div>;
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {answers.map((item: any, idx: number) => (
+                      <div key={idx} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                        <div className="flex justify-between items-center mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                              <AccountCircle />
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-lg">{item.student.name}</h3>
+                              <span className="text-xs text-slate-400 font-mono">{item.student.phone}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-200">
+                          <span className="text-xs text-slate-400 font-bold block mb-2">إجابة الطالب:</span>
+                          <p className="font-bold text-slate-800 whitespace-pre-wrap">{item.answer.selectedOption}</p>
+                        </div>
+                        <div className="flex gap-4">
+                          <button onClick={async () => {
+                            const updatedStudent = { ...item.student };
+                            const resultIdx = updatedStudent.examResults.findIndex((r: any) => r.examId === item.result.examId);
+                            const answerIdx = updatedStudent.examResults[resultIdx].answers.findIndex((a: any) => a.questionId === item.answer.questionId);
+                            
+                            const exam = exams.find(e => e.id === item.result.examId);
+                            const question = exam?.questions.find(q => q.id === item.answer.questionId);
+                            const qScore = question?.score || 0;
+
+                            updatedStudent.examResults[resultIdx].answers[answerIdx].status = 'correct';
+                            updatedStudent.examResults[resultIdx].answers[answerIdx].isCorrect = true;
+                            updatedStudent.examResults[resultIdx].score = (updatedStudent.examResults[resultIdx].score || 0) + qScore;
+                            
+                            await saveDocument('users', updatedStudent.phone, updatedStudent);
+                            // Update local state to remove this answer from the view
+                            setStudents(students.map(s => s.phone === updatedStudent.phone ? updatedStudent : s));
+                          }} className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-black hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
+                            إجابة صحيحة ✅
+                          </button>
+                          <button onClick={async () => {
+                            const updatedStudent = { ...item.student };
+                            const resultIdx = updatedStudent.examResults.findIndex((r: any) => r.examId === item.result.examId);
+                            const answerIdx = updatedStudent.examResults[resultIdx].answers.findIndex((a: any) => a.questionId === item.answer.questionId);
+                            
+                            updatedStudent.examResults[resultIdx].answers[answerIdx].status = 'incorrect';
+                            updatedStudent.examResults[resultIdx].answers[answerIdx].isCorrect = false;
+                            
+                            await saveDocument('users', updatedStudent.phone, updatedStudent);
+                            // Update local state to remove this answer from the view
+                            setStudents(students.map(s => s.phone === updatedStudent.phone ? updatedStudent : s));
+                          }} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-black hover:bg-red-600 transition-all shadow-lg shadow-red-200 flex items-center justify-center gap-2">
+                            إجابة خاطئة ❌
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </motion.div>
+          )}
+
           {activeTab === 'courses' && (
             <motion.div 
               key="courses"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
-              className="grid md:grid-cols-2 gap-8"
+              className="space-y-6"
             >
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-amber-800 font-bold text-sm mb-6">
+                ⚠️ تنبيه: لضمان سرعة التطبيق وتجنب مشاكل المساحة، يرجى رفع الفيديوهات على YouTube (غير مدرج) والملفات الكبيرة على Google Drive ووضع الروابط فقط.
+              </div>
+              <div className="grid md:grid-cols-2 gap-8">
               {/* Add New Course Form */}
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 h-fit">
                 <h3 className="text-2xl font-black mb-6 flex items-center gap-2 text-secondary">
@@ -1006,7 +1277,8 @@ const AdminDashboard = () => {
                   </div>
                 ))}
               </div>
-            </motion.div>
+            </div>
+          </motion.div>
           )}
 
           {activeTab === 'edit-course' && editingCourse && (
@@ -1268,6 +1540,10 @@ const AdminDashboard = () => {
                                         <option value="multiple-choice">اختيار من متعدد</option>
                                         <option value="true-false">صح وخطأ</option>
                                         <option value="text">سؤال مقالي</option>
+                                        <option value="who-is-responsible">لمن تنسب الأعمال</option>
+                                        <option value="prove">دلل</option>
+                                        <option value="support-with-phrase">أيد بالعبارة</option>
+                                        <option value="complete">أكمل</option>
                                       </select>
 
                                       <input 
@@ -1321,7 +1597,7 @@ const AdminDashboard = () => {
                                       </div>
                                     </div>
 
-                                    {q.type !== 'text' && (
+                                    {!['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || '') && (
                                       <div className="grid grid-cols-2 gap-2">
                                         {q.options.map((opt, optIdx) => (
                                           <div key={optIdx} className={`flex items-center gap-1 p-1 rounded-lg border ${q.correctAnswer === optIdx ? 'border-green-500 bg-green-50' : 'border-slate-200 bg-white'}`}>
@@ -1472,6 +1748,19 @@ const AdminDashboard = () => {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-bold mb-2">الصف الدراسي</label>
+                    <select 
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-accent"
+                      value={newExamGrade || ''}
+                      onChange={(e) => setNewExamGrade(e.target.value)}
+                    >
+                      <option value="">اختر الصف الدراسي</option>
+                      <option value="1">الصف الأول الإعدادي</option>
+                      <option value="2">الصف الثاني الإعدادي</option>
+                      <option value="3">الصف الثالث الإعدادي</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-bold mb-2">مدة الامتحان (بالدقائق)</label>
                     <input 
                       type="number" 
@@ -1616,6 +1905,10 @@ const AdminDashboard = () => {
                             <option value="multiple-choice">اختيار من متعدد</option>
                             <option value="true-false">صح وخطأ</option>
                             <option value="text">سؤال مقالي</option>
+                            <option value="who-is-responsible">لمن تنسب الأعمال</option>
+                            <option value="prove">دلل</option>
+                            <option value="support-with-phrase">أيد بالعبارة</option>
+                            <option value="complete">أكمل</option>
                           </select>
 
                           <div className="flex items-center gap-2">
@@ -1674,7 +1967,7 @@ const AdminDashboard = () => {
                       </div>
                     </div>
 
-                    {q.type !== 'text' && (
+                    {!['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || '') && (
                       <div className="grid md:grid-cols-2 gap-4 mb-6">
                         {q.options.map((opt, optIdx) => (
                           <div key={optIdx} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all ${q.correctAnswer === optIdx ? 'border-green-500 bg-green-50' : 'border-slate-50 bg-slate-50'}`}>
@@ -1698,7 +1991,7 @@ const AdminDashboard = () => {
                       </div>
                     )}
                     
-                    {q.type === 'text' && (
+                    {['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || '') && (
                       <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-slate-400 text-sm text-center">
                         هذا السؤال مقالي، سيقوم الطالب بكتابة الإجابة.
                       </div>
@@ -1715,7 +2008,7 @@ const AdminDashboard = () => {
               </div>
             </motion.div>
           )}
-
+          
           {activeTab === 'stats' && (
             <motion.div 
               key="stats"
@@ -1769,13 +2062,13 @@ const AdminDashboard = () => {
         {/* View Result Modal */}
         <AnimatePresence>
           {selectedResult && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
-              >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            >
+              <div className="bg-white w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
                   <div>
                     <h3 className="text-xl font-black text-slate-900">تفاصيل إجابة الطالب</h3>
@@ -1793,10 +2086,10 @@ const AdminDashboard = () => {
 
                     return (exam.questions || []).map((q, idx) => {
                       const answer = selectedResult.result.answers.find((a: any) => a.questionId === q.id);
-                      const isCorrect = answer?.isCorrect;
+                      const status = answer?.isCorrect ? 'correct' : 'incorrect';
                       
                       return (
-                        <div key={q.id} className={`p-6 rounded-2xl border-2 ${isCorrect ? 'border-green-100 bg-green-50/30' : 'border-red-100 bg-red-50/30'}`}>
+                        <div key={q.id} className={`p-6 rounded-2xl border-2 ${status === 'correct' ? 'border-green-100 bg-green-50/30' : 'border-red-100 bg-red-50/30'}`}>
                           <div className="flex gap-4 mb-4">
                             <span className="w-8 h-8 bg-white rounded-lg flex items-center justify-center font-bold text-slate-400 text-xs shadow-sm">
                               {idx + 1}
@@ -1808,7 +2101,7 @@ const AdminDashboard = () => {
                               )}
                               <div className="flex items-center gap-2 text-xs font-bold">
                                 <span className="text-slate-500">الدرجة: {q.score}</span>
-                                {isCorrect ? (
+                                {status === 'correct' ? (
                                   <span className="text-green-600 bg-green-100 px-2 py-0.5 rounded-full">إجابة صحيحة</span>
                                 ) : (
                                   <span className="text-red-600 bg-red-100 px-2 py-0.5 rounded-full">إجابة خاطئة</span>
@@ -1817,22 +2110,23 @@ const AdminDashboard = () => {
                             </div>
                           </div>
 
-                          <div className="bg-white p-4 rounded-xl border border-slate-100 space-y-2">
+                          <div className="bg-white p-4 rounded-xl border border-slate-100 space-y-4">
                             <div>
                               <span className="text-xs text-slate-400 font-bold block mb-1">إجابة الطالب:</span>
                               <p className="font-bold text-slate-800">
-                                {q.type === 'text' ? (
+                                {q.type === 'text' || q.type === 'who-is-responsible' || q.type === 'prove' || q.type === 'support-with-phrase' || q.type === 'complete' ? (
                                   answer?.selectedOption || <span className="text-slate-400 italic">لم يجب</span>
                                 ) : (
                                   q.options?.[Number(answer?.selectedOption)] || <span className="text-slate-400 italic">لم يجب</span>
                                 )}
                               </p>
                             </div>
-                            {!isCorrect && (
+
+                            {status !== 'correct' && (
                               <div className="pt-2 border-t border-slate-50">
                                 <span className="text-xs text-slate-400 font-bold block mb-1">الإجابة الصحيحة:</span>
                                 <p className="font-bold text-green-600">
-                                  {q.type === 'text' ? q.correctAnswer : q.options?.[Number(q.correctAnswer)]}
+                                  {q.type === 'text' || q.type === 'who-is-responsible' || q.type === 'prove' || q.type === 'support-with-phrase' || q.type === 'complete' ? q.correctAnswer : q.options?.[Number(q.correctAnswer)]}
                                 </p>
                               </div>
                             )}
@@ -1871,8 +2165,8 @@ const AdminDashboard = () => {
                     </button>
                   </div>
                 </div>
-              </motion.div>
-            </div>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>

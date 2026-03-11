@@ -15,11 +15,15 @@ export const getCollectionLimited = async (colName: string, limitCount: number) 
 };
 
 export const saveDocument = async (colName: string, docId: string, data: any) => {
-  await setDoc(doc(db, colName, docId), data);
+  // Remove undefined values
+  const cleanData = JSON.parse(JSON.stringify(data));
+  await setDoc(doc(db, colName, docId), cleanData);
 };
 
 export const updateDocument = async (colName: string, docId: string, data: any) => {
-  await updateDoc(doc(db, colName, docId), data);
+  // Remove undefined values
+  const cleanData = JSON.parse(JSON.stringify(data));
+  await updateDoc(doc(db, colName, docId), cleanData);
 };
 
 export const getDocument = async <T>(colName: string, docId: string): Promise<T | null> => {

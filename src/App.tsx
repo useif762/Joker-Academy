@@ -97,7 +97,7 @@ type Question = {
   id: string;
   text: string;
   image?: string;
-  type?: 'multiple-choice' | 'true-false' | 'text';
+  type?: 'multiple-choice' | 'true-false' | 'text' | 'who-is-responsible' | 'prove' | 'support-with-phrase' | 'complete';
   options: string[];
   correctAnswer: number | string; // number for index, string for text answer
   score: number;
@@ -106,6 +106,7 @@ type Question = {
 type Exam = {
   id: string;
   title: string;
+  grade?: string;
   questions: Question[];
   duration?: number; // in minutes
   totalScore?: number;
@@ -511,47 +512,58 @@ const Courses = memo(({ setPage, courses, onSelectCourse, user }: { setPage: (p:
 });
 
 const Exams = memo(({ setPage, exams, onSelectExam, user }: { setPage: (p: Page) => void, exams: Exam[], onSelectExam: (id: string) => void, user: User | null }) => {
-  const publishedExams = exams.filter(e => e.isPublished);
+  const publishedExams = exams.filter(e => e.isPublished && (!e.grade || e.grade === user?.grade));
 
   return (
     <section className="py-20 container mx-auto px-6">
-      <h2 className="text-4xl font-black mb-12 text-center">بنك الامتحانات</h2>
-      <div className="max-w-4xl mx-auto flex flex-col gap-6">
+      <h2 className="text-4xl font-black mb-4 text-center">بنك الامتحانات</h2>
+      <p className="text-center text-slate-500 mb-12">اختر الاختبار الذي ترغب في البدء به</p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {publishedExams.map((exam) => {
           const isTaken = user?.examResults?.some(r => String(r.examId) === exam.id);
           return (
-            <div key={exam.id} className="bg-white p-6 rounded-2xl shadow-md flex items-center justify-between border-r-8 border-primary">
-              <div className="flex items-center gap-6">
-                <div className="bg-primary/10 p-4 rounded-xl text-primary"><Quiz className="text-3xl" /></div>
-                <div>
-                  <h3 className="font-bold text-xl">{exam.title}</h3>
-                  <p className="text-slate-500 text-sm">{(exam.questions || []).length} سؤال • {exam.duration || 30} دقيقة • متوسط الصعوبة</p>
+            <motion.div 
+              key={exam.id} 
+              whileHover={{ y: -5 }}
+              className="group relative bg-white rounded-3xl p-6 shadow-sm border border-slate-100 hover:shadow-xl transition-all flex flex-col"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className={`w-16 h-16 ${isTaken ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-primary'} rounded-2xl flex items-center justify-center text-3xl`}>
+                  <Quiz />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-black text-slate-800 text-lg line-clamp-1">{exam.title}</h3>
+                  <div className="flex items-center gap-3 text-xs font-bold text-slate-400 mt-1">
+                    <span>{(exam.questions || []).length} سؤال</span>
+                    <span>•</span>
+                    <span>{exam.duration || 30} دقيقة</span>
+                  </div>
                 </div>
               </div>
+
               {isTaken ? (
-                <button 
-                  disabled
-                  className="px-8 py-3 bg-slate-200 text-slate-500 font-bold rounded-xl cursor-not-allowed flex items-center gap-2"
-                >
-                  <Badge /> تم الانتهاء
-                </button>
+                <div className="w-full py-3 bg-green-50 text-green-600 rounded-xl text-sm font-black flex items-center justify-center gap-2">
+                  <CheckCircle className="text-lg" /> تم حل الامتحان بنجاح
+                </div>
               ) : (
                 <button 
                   onClick={() => onSelectExam(exam.id)}
-                  className="px-8 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-all"
+                  className="w-full py-3 bg-primary text-white rounded-xl text-sm font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
                 >
-                  ابدأ الاختبار
+                  ابدأ الاختبار الآن
                 </button>
               )}
-            </div>
+            </motion.div>
           );
         })}
-        {publishedExams.length === 0 && (
-          <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
-            لا توجد امتحانات متاحة حالياً
-          </div>
-        )}
       </div>
+
+      {publishedExams.length === 0 && (
+        <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-400">
+          لا توجد امتحانات متاحة حالياً
+        </div>
+      )}
     </section>
   );
 });
@@ -560,16 +572,17 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
-  const [userAnswers, setUserAnswers] = useState<Record<string, {selectedOption: number | string, isCorrect: boolean}>>({});
+  const [userAnswers, setUserAnswers] = useState<Record<string, {selectedOption: number | string, status: 'correct' | 'incorrect' | 'pending', isCorrect: boolean}>>({});
   const [textAnswer, setTextAnswer] = useState("");
   const [timeLeft, setTimeLeft] = useState<number>((exam?.duration || 30) * 60);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const questions = exam?.questions || [];
+  const currentQ = questions[currentQuestion];
 
   // Timer Effect
   useEffect(() => {
-    if (isFinished || !exam) return;
+    if (isFinished || !exam || questions.length === 0) return;
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -583,12 +596,12 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isFinished, exam?.id]);
+  }, [isFinished, exam?.id, questions.length]);
 
   // Prevent leaving
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!isFinished) {
+      if (!isFinished && questions.length > 0) {
         // Attempt to auto-submit before leaving
         finishExam();
         e.preventDefault();
@@ -597,7 +610,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isFinished]);
+  }, [isFinished, questions.length]);
 
   // Disable back button
   useEffect(() => {
@@ -617,10 +630,10 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   };
 
   const finishExam = () => {
-    if (isFinished) return;
+    if (isFinished || questions.length === 0) return;
     
     // Calculate final score and complete answers
-    const completedAnswers: {questionId: string, selectedOption: number | string, isCorrect: boolean}[] = [];
+    const completedAnswers: {questionId: string, selectedOption: number | string, isCorrect: boolean, status: 'correct' | 'incorrect' | 'pending'}[] = [];
     let totalScore = 0;
     
     questions.forEach((q) => {
@@ -631,7 +644,8 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
         completedAnswers.push({
           questionId: q.id,
           selectedOption: answer.selectedOption,
-          isCorrect: answer.isCorrect
+          isCorrect: answer.isCorrect,
+          status: answer.status
         });
         if (answer.isCorrect) {
           totalScore += questionScore;
@@ -640,7 +654,8 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
         completedAnswers.push({
           questionId: q.id,
           selectedOption: "لم يتم الحل",
-          isCorrect: false
+          isCorrect: false,
+          status: 'incorrect'
         });
       }
     });
@@ -679,12 +694,29 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     }
   };
 
+  if (!exam) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600 font-bold">جاري تحميل الامتحان...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (questions.length === 0) {
     return createPortal(
       <div className="fixed inset-0 z-[150] bg-slate-50 overflow-y-auto flex items-center justify-center p-6">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">هذا الامتحان لا يحتوي على أسئلة بعد</h2>
-          <button onClick={onBack} className="px-6 py-2 bg-primary text-white rounded-xl">العودة</button>
+        <div className="text-center bg-white p-12 rounded-3xl shadow-xl border border-slate-100 max-w-md w-full">
+          <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center text-4xl mx-auto mb-6">
+            <Quiz />
+          </div>
+          <h2 className="text-2xl font-black mb-4">هذا الاختبار لا يحتوي على أسئلة بعد</h2>
+          <p className="text-slate-500 mb-8 font-bold">يرجى العودة لاحقاً أو التواصل مع الإدارة.</p>
+          <button onClick={onBack} className="w-full py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-all">
+            العودة
+          </button>
         </div>
       </div>,
       document.body
@@ -693,20 +725,22 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
 
   const handleAnswer = (answer: number | string) => {
     const q = questions[currentQuestion];
-    let isCorrect = false;
-    if (typeof answer === 'number') {
-        isCorrect = answer === q.correctAnswer;
+    let status: 'correct' | 'incorrect' | 'pending' = 'incorrect';
+    
+    if (['who-is-responsible', 'prove', 'support-with-phrase', 'text', 'complete'].includes(q.type || '')) {
+        status = 'pending';
+    } else if (typeof answer === 'number') {
+        status = answer === q.correctAnswer ? 'correct' : 'incorrect';
     } else {
-        // For text answers, we mark as correct if not empty for now, 
-        // but ideally they should be manually graded or matched.
-        isCorrect = answer.trim().length > 0; 
+        status = answer.trim().length > 0 ? 'correct' : 'incorrect';
     }
 
     setUserAnswers(prev => ({
       ...prev,
       [q.id]: {
         selectedOption: answer,
-        isCorrect
+        status,
+        isCorrect: status === 'correct'
       }
     }));
 
@@ -717,20 +751,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     }
   };
 
-  const currentQ = questions[currentQuestion];
-  if (!currentQ) return null;
   const currentAnswer = currentQ ? userAnswers[currentQ.id] : null;
-
-  if (!exam || !currentQ) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-600 font-bold">جاري تحميل الامتحان...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (isFinished) {
     // Recalculate score for display
@@ -768,6 +789,11 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
               </>
             )}
             <p className="text-slate-500 mb-6 sm:mb-8 font-bold text-base sm:text-lg">لقد حصلت على {finalScore} من {finalTotal}</p>
+            {questions.some(q => userAnswers[q.id]?.status === 'pending') && (
+              <div className="bg-yellow-50 text-yellow-700 p-4 rounded-xl font-bold mb-6">
+                الأسئلة المقالية قيد التصحيح، ستصلك رسالة حين الانتهاء على صندوق الإشعارات مع النتيجة.
+              </div>
+            )}
             <button onClick={onBack} className="w-full sm:w-auto px-8 py-4 bg-primary text-white font-black rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-all">
               {exam?.id.toString().startsWith('lesson_quiz') ? 'العودة للدرس' : 'العودة للرئيسية'}
             </button>
@@ -780,14 +806,17 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
             </h3>
             {questions.map((q, i) => {
               const userAnswer = userAnswers[q.id];
-              const isCorrect = userAnswer?.isCorrect;
+              const status = userAnswer?.status;
+              const isPending = status === 'pending' || (status === undefined && ['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || ''));
+              const isCorrect = status === 'correct' || (status === undefined && userAnswer?.isCorrect && !isPending);
+              const isIncorrect = status === 'incorrect' || (status === undefined && !userAnswer?.isCorrect && !isPending);
               
               return (
-                <div key={q.id} className={`bg-white p-4 sm:p-6 rounded-2xl shadow-sm border-2 ${isCorrect ? 'border-green-200' : 'border-red-200'}`}>
+                <div key={q.id} className={`bg-white p-4 sm:p-6 rounded-2xl shadow-sm border-2 ${isCorrect ? 'border-green-200' : isIncorrect ? 'border-red-200' : 'border-yellow-200'}`}>
                   <div className="flex flex-col sm:flex-row justify-between items-start gap-2 mb-4">
                     <h4 className="font-bold text-base sm:text-lg leading-relaxed">{i + 1}. {q.text}</h4>
-                    <span className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-bold shrink-0 ${isCorrect ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                      {isCorrect ? 'إجابة صحيحة' : 'إجابة خاطئة'}
+                    <span className={`px-3 py-1 rounded-lg text-xs sm:text-sm font-bold shrink-0 ${isCorrect ? 'bg-green-100 text-green-600' : isIncorrect ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                      {isCorrect ? 'إجابة صحيحة' : isIncorrect ? 'إجابة خاطئة' : 'قيد التصحيح'}
                     </span>
                   </div>
                   
@@ -865,7 +894,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                   <button
                     key={i}
                     onClick={() => {
-                      if (currentQ.type === 'text' && textAnswer.trim()) {
+                      if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(currentQ.type || '') && textAnswer.trim()) {
                         handleAnswer(textAnswer);
                       }
                       setCurrentQuestion(i);
@@ -891,7 +920,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                 </div>
                 <button 
                   onClick={() => {
-                    if (currentQ.type === 'text' && textAnswer.trim()) {
+                    if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(currentQ.type || '') && textAnswer.trim()) {
                       handleAnswer(textAnswer);
                     }
                     setShowConfirmSubmit(true);
@@ -931,7 +960,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
             <motion.div key={currentQuestion} initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="bg-white p-10 rounded-3xl shadow-xl border border-slate-100">
               <div className="flex justify-between items-start mb-6">
                 <span className="bg-primary/10 text-primary px-3 py-1 rounded-lg text-xs font-black">
-                  {currentQ.type === 'multiple-choice' ? 'اختيار من متعدد' : currentQ.type === 'true-false' ? 'صح وخطأ' : 'سؤال مقالي'}
+                  {currentQ.type === 'multiple-choice' ? 'اختيار من متعدد' : currentQ.type === 'true-false' ? 'صح وخطأ' : currentQ.type === 'who-is-responsible' ? 'لمن تنسب الأعمال' : currentQ.type === 'prove' ? 'دلل' : currentQ.type === 'support-with-phrase' ? 'أيد بالعبارة' : currentQ.type === 'complete' ? 'أكمل' : 'سؤال مقالي'}
                 </span>
                 <span className="text-slate-400 font-bold text-sm">{currentQ.score} درجة</span>
               </div>
@@ -950,7 +979,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                 </div>
               )}
 
-            {currentQ.type === 'text' ? (
+            {['text', 'who-is-responsible', 'prove', 'support-with-phrase', 'complete'].includes(currentQ.type || '') ? (
               <div className="space-y-6">
                 <textarea 
                   value={textAnswer || (userAnswers[currentQ.id]?.selectedOption as string) || ""}
@@ -995,7 +1024,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
             <div className="flex justify-between items-center mt-12 pt-8 border-t border-slate-100">
               <button 
                 onClick={() => {
-                  if (currentQ.type === 'text' && textAnswer.trim()) {
+                  if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(currentQ.type || '') && textAnswer.trim()) {
                     handleAnswer(textAnswer);
                   }
                   if (currentQuestion > 0) {
@@ -1012,7 +1041,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
               {currentQuestion < questions.length - 1 ? (
                 <button 
                   onClick={() => {
-                    if (currentQ.type === 'text' && textAnswer.trim()) {
+                    if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(currentQ.type || '') && textAnswer.trim()) {
                       handleAnswer(textAnswer);
                     }
                     setCurrentQuestion(currentQuestion + 1);
@@ -1025,7 +1054,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
               ) : (
                 <button 
                   onClick={() => {
-                    if (currentQ.type === 'text' && textAnswer.trim()) {
+                    if (['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(currentQ.type || '') && textAnswer.trim()) {
                       handleAnswer(textAnswer);
                     }
                     setShowConfirmSubmit(true);
@@ -1322,7 +1351,10 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
 
         <div>
           <div>
-            <div className="bg-black aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl mb-6 sm:mb-8 flex items-center justify-center">
+            <div className="bg-black aspect-video rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl mb-6 sm:mb-8 flex items-center justify-center relative">
+              <div className="absolute top-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full z-10 pointer-events-none select-none">
+                ⚠️ تسجيل الشاشة غير مسموح
+              </div>
               {currentLesson.type === 'youtube' && currentLesson.url ? (
                 <iframe 
                   width="100%" 
@@ -1338,6 +1370,8 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                 <video 
                   src={currentLesson.url} 
                   controls 
+                  controlsList="nodownload"
+                  onContextMenu={(e) => e.preventDefault()}
                   className="w-full h-full object-contain"
                   onTimeUpdate={handleTimeUpdate}
                 />
@@ -1377,9 +1411,9 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                       <div className="space-y-4">
                         <div className="relative w-full h-[600px] rounded-xl border border-slate-200 bg-white overflow-hidden">
                           <iframe 
-                            src={currentLesson.pdfUrl.includes('cloudinary') 
-                              ? currentLesson.pdfUrl 
-                              : `https://docs.google.com/viewer?url=${encodeURIComponent(currentLesson.pdfUrl)}&embedded=true`} 
+                            src={currentLesson.pdfUrl.includes('drive.google.com') 
+                              ? currentLesson.pdfUrl.replace('/view', '/preview') 
+                              : `https://docs.google.com/viewer?url=${encodeURIComponent(currentLesson.pdfUrl)}&embedded=true`}
                             className="w-full h-full"
                             title="PDF Viewer"
                             loading="lazy"
@@ -1393,12 +1427,12 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                             إخفاء الملف
                           </button>
                           <a 
-                            href={currentLesson.pdfUrl} 
-                            target="_blank" 
+                            href={currentLesson.pdfUrl}
+                            target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 py-2 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all text-sm text-center"
+                            className="flex-1 py-2 bg-primary/10 text-primary font-bold rounded-xl hover:bg-primary/20 transition-all text-sm text-center flex items-center justify-center gap-2"
                           >
-                            فتح في نافذة جديدة
+                            فتح في نافذة جديدة ↗️
                           </a>
                         </div>
                       </div>
@@ -1410,15 +1444,6 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                         >
                           عرض الملف
                         </button>
-                        <a 
-                          href={currentLesson.pdfUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="px-6 py-3 bg-white border-2 border-slate-200 text-slate-600 font-bold rounded-xl flex items-center justify-center hover:border-primary hover:text-primary transition-all"
-                          title="تحميل"
-                        >
-                          <Download />
-                        </a>
                       </div>
                     )}
                   </div>
@@ -1669,28 +1694,37 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
 
                   if (!question) return null;
 
-                  return (
-                    <div key={idx} className={`p-6 rounded-2xl border-2 ${ans.isCorrect ? 'border-green-100 bg-green-50/30' : 'border-red-100 bg-red-50/30'}`}>
-                      <p className="font-bold mb-4">{idx + 1}. {question.text}</p>
-                      <div className="grid gap-2">
-                        {question.type === 'text' ? (
-                          <div className="space-y-4">
-                            <div>
-                              <span className="text-xs text-slate-400 font-bold block mb-1">إجابتك:</span>
-                              <p className={`p-4 rounded-xl border-2 font-bold ${ans.isCorrect ? 'bg-green-50 border-green-500 text-green-700' : 'bg-red-50 border-red-500 text-red-700'}`}>
-                                {ans.selectedOption || 'لم يتم الحل'}
-                              </p>
-                            </div>
-                            {!ans.isCorrect && question.correctAnswer && (
-                              <div>
-                                <span className="text-xs text-slate-400 font-bold block mb-1">الإجابة الصحيحة:</span>
-                                <p className="p-4 rounded-xl border-2 bg-green-50 border-green-500 text-green-700 font-bold">
-                                  {question.correctAnswer}
-                                </p>
-                              </div>
-                            )}
+                      const isPending = ans.status === 'pending' || (ans.status === undefined && ['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(question.type || ''));
+                      const isCorrect = ans.status === 'correct' || (ans.status === undefined && ans.isCorrect && !isPending);
+                      const isIncorrect = ans.status === 'incorrect' || (ans.status === undefined && !ans.isCorrect && !isPending);
+
+                      return (
+                        <div key={idx} className={`p-6 rounded-2xl border-2 ${isCorrect ? 'border-green-100 bg-green-50/30' : isIncorrect ? 'border-red-100 bg-red-50/30' : 'border-yellow-100 bg-yellow-50/30'}`}>
+                          <div className="flex justify-between items-start mb-4">
+                            <p className="font-bold">{idx + 1}. {question.text}</p>
+                            <span className={`px-3 py-1 rounded-lg text-xs font-bold shrink-0 ${isCorrect ? 'bg-green-100 text-green-600' : isIncorrect ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-600'}`}>
+                              {isCorrect ? 'إجابة صحيحة' : isIncorrect ? 'إجابة خاطئة' : 'قيد التصحيح'}
+                            </span>
                           </div>
-                        ) : (
+                          <div className="grid gap-2">
+                            {['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(question.type || '') ? (
+                              <div className="space-y-4">
+                                <div>
+                                  <span className="text-xs text-slate-400 font-bold block mb-1">إجابتك:</span>
+                                  <p className={`p-4 rounded-xl border-2 font-bold ${isCorrect ? 'bg-green-50 border-green-500 text-green-700' : isIncorrect ? 'bg-red-50 border-red-500 text-red-700' : 'bg-yellow-50 border-yellow-500 text-yellow-700'}`}>
+                                    {ans.selectedOption || 'لم يتم الحل'}
+                                  </p>
+                                </div>
+                                {!isCorrect && !isPending && question.correctAnswer && (
+                                  <div>
+                                    <span className="text-xs text-slate-400 font-bold block mb-1">الإجابة الصحيحة:</span>
+                                    <p className="p-4 rounded-xl border-2 bg-green-50 border-green-500 text-green-700 font-bold">
+                                      {question.correctAnswer}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
                           question.options?.map((opt, optIdx) => {
                             const isSelected = String(ans.selectedOption) === String(optIdx);
                             const isActuallyCorrect = String(question.correctAnswer) === String(optIdx);
@@ -2177,7 +2211,9 @@ export default function App() {
   
   const currentPage = useMemo(() => {
     const path = location.pathname.replace(/^\//, '').split('?')[0];
-    if (path === '' || path === 'home') return 'home';
+    if (path === '' || path === 'home') {
+      return (localStorage.getItem('joker_page') as Page) || 'home';
+    }
     return (path as Page) || 'home';
   }, [location.pathname]);
 
@@ -2189,9 +2225,7 @@ export default function App() {
     }
   };
 
-  const [isLoading, setIsLoading] = useState(() => {
-    return !sessionStorage.getItem('joker_loaded');
-  });
+  const [isLoading, setIsLoading] = useState(false);
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
@@ -2285,6 +2319,7 @@ export default function App() {
   }, [user]);
 
   useEffect(() => {
+    console.log('location.pathname:', location.pathname);
     window.scrollTo(0, 0);
   }, [currentPage]);
 
@@ -2296,7 +2331,7 @@ export default function App() {
     const currentSeenExams = new Set(user.seenExamIds || []);
     
     const userCourses = courses.filter(c => c.grade === user.grade);
-    const userExams = exams.filter(e => e.isPublished !== false);
+    const userExams = exams.filter(e => e.isPublished !== false && e.grade === user.grade);
 
     const newNotifications: any[] = [];
 
@@ -2379,12 +2414,9 @@ export default function App() {
 
     // 1. Subscribe to user document for real-time updates (exam resets, etc.)
     const unsubscribe = onSnapshot(doc(db, 'users', user.phone), (snapshot) => {
-      console.log('Snapshot update for user:', user.phone, 'exists:', snapshot.exists());
       if (!snapshot.exists()) {
-        console.warn('User document not found, logging out.');
-        setUser(null);
-        localStorage.removeItem('joker_user');
-        setCurrentPage('login');
+        // لا تقم بتسجيل الخروج إذا لم يوجد المستند، قد يكون خطأ في الشبكة
+        console.warn('User document not found, skipping logout.');
         return;
       }
       
@@ -2394,7 +2426,6 @@ export default function App() {
       const localExams = user.examResults || [];
       const remoteExams = remoteUser.examResults || [];
       
-      // Simple check: if lengths differ, or if specific exam IDs are missing in remote
       const needsUpdate = localExams.length !== remoteExams.length || 
                           localExams.some(l => !remoteExams.find(r => r.examId === l.examId));
 
@@ -2434,22 +2465,9 @@ export default function App() {
 
   // Protected view check
   const renderPage = () => {
-    console.log('currentPage:', currentPage);
     const dataRequiredPages: Page[] = ['courses', 'exams', 'profile', 'exam-view', 'course-view', 'curriculum', 'leaderboard'];
     
-    // Only show loading for specific item views to avoid blocking the whole app
-    if (!isDataLoaded && (currentPage === 'exam-view' || currentPage === 'course-view')) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background-light">
-          <div className="text-center">
-            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-primary font-black text-xl">جاري تحميل البيانات...</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (dataRequiredPages.includes(currentPage) && !user && currentPage !== 'leaderboard') {
+    if (dataRequiredPages.includes(currentPage) && !user) {
       return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
     }
     
