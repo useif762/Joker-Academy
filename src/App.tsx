@@ -489,7 +489,7 @@ const Courses = memo(({ setPage, courses, onSelectCourse, user }: { setPage: (p:
               <h3 className="font-bold text-xl mb-2">{course.title}</h3>
               <p className="text-slate-500 text-sm mb-4">{course.description}</p>
               <div className="flex justify-between items-center">
-                <span className="text-primary font-bold">{course.lessons.filter(l => l.isPublished).length} درس</span>
+                <span className="text-primary font-bold">{(course.lessons || []).filter(l => l.isPublished).length} درس</span>
                 <button 
                   onClick={() => onSelectCourse(course.id)}
                   className="px-4 py-2 bg-slate-100 rounded-lg font-bold hover:bg-primary hover:text-white transition-all"
@@ -525,7 +525,7 @@ const Exams = memo(({ setPage, exams, onSelectExam, user }: { setPage: (p: Page)
                 <div className="bg-primary/10 p-4 rounded-xl text-primary"><Quiz className="text-3xl" /></div>
                 <div>
                   <h3 className="font-bold text-xl">{exam.title}</h3>
-                  <p className="text-slate-500 text-sm">{exam.questions.length} سؤال • {exam.duration || 30} دقيقة • متوسط الصعوبة</p>
+                  <p className="text-slate-500 text-sm">{(exam.questions || []).length} سؤال • {exam.duration || 30} دقيقة • متوسط الصعوبة</p>
                 </div>
               </div>
               {isTaken ? (
@@ -718,6 +718,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   };
 
   const currentQ = questions[currentQuestion];
+  if (!currentQ) return null;
   const currentAnswer = currentQ ? userAnswers[currentQ.id] : null;
 
   if (!exam || !currentQ) {
@@ -1274,6 +1275,7 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
   }
 
   const currentLesson = lessons[activeLesson];
+  if (!currentLesson) return null;
   const lessonQuizId = `lesson_quiz_${currentLesson.id}`;
   const existingResult = user?.examResults?.find(r => r.examId === lessonQuizId);
 
@@ -1652,14 +1654,14 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
                   // Try to find in main exams
                   const exam = exams.find(e => e.id === viewingResult.examId);
                   if (exam) {
-                    question = exam.questions.find(q => q.id === ans.questionId);
+                    question = (exam.questions || []).find(q => q.id === ans.questionId);
                   } else {
                     // Try to find in lesson quizzes
                     const lessonId = viewingResult.examId.replace('lesson_quiz_', '');
                     for (const course of courses) {
-                      const lesson = course.lessons.find(l => l.id === lessonId);
+                      const lesson = (course.lessons || []).find(l => l.id === lessonId);
                       if (lesson && lesson.quiz) {
-                        question = lesson.quiz.find(q => q.id === ans.questionId);
+                        question = (lesson.quiz || []).find(q => q.id === ans.questionId);
                         if (question) break;
                       }
                     }
@@ -1757,7 +1759,7 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
                       // Try to find the lesson title from courses
                       let lessonTitle = "درس تعليمي";
                       courses.forEach(c => {
-                        const lesson = c.lessons.find(l => l.id === lessonId);
+                        const lesson = (c.lessons || []).find(l => l.id === lessonId);
                         if (lesson) lessonTitle = lesson.title;
                       });
                       
@@ -1803,7 +1805,11 @@ const Login = ({ setPage, onLogin }: { setPage: (p: Page) => void, onLogin: (u: 
   
   const [formData, setFormData] = useState(() => {
     const saved = sessionStorage.getItem('login_form_data');
-    return saved ? JSON.parse(saved) : { name: '', phone: '', parentPhone: '', grade: '', gender: '', password: '', confirmPassword: '' };
+    try {
+      return saved ? JSON.parse(saved) : { name: '', phone: '', parentPhone: '', grade: '', gender: '', password: '', confirmPassword: '' };
+    } catch (e) {
+      return { name: '', phone: '', parentPhone: '', grade: '', gender: '', password: '', confirmPassword: '' };
+    }
   });
 
   useEffect(() => {
@@ -2107,7 +2113,7 @@ const Curriculum = memo(({ courses, selectedGrade, onSelectLesson }: { courses: 
                 </h3>
                 <div className="flex flex-col gap-4">
                   {(() => {
-                    const publishedLessons = course.lessons.filter(l => l.isPublished);
+                    const publishedLessons = (course.lessons || []).filter(l => l.isPublished);
                     if (publishedLessons.length === 0) {
                       return <p className="text-slate-400 text-sm">لا توجد دروس متاحة في هذه الوحدة.</p>;
                     }
@@ -2191,7 +2197,13 @@ export default function App() {
   const [user, setUser] = useState<User | null>(() => {
     const savedUser = localStorage.getItem('joker_user');
     console.log('Initializing user from localStorage:', savedUser);
-    return savedUser ? JSON.parse(savedUser) : null;
+    try {
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch (e) {
+      console.error('Failed to parse user from localStorage', e);
+      localStorage.removeItem('joker_user');
+      return null;
+    }
   });
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -2266,7 +2278,7 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribeNotifications = subscribeToCollection('notifications', (data) => {
-      const userNotifications = data.filter((n: any) => !n.userId || (user && n.userId === user.phone));
+      const userNotifications = (data || []).filter((n: any) => !n.userId || (user && n.userId === user.phone));
       setNotifications(userNotifications.sort((a: any, b: any) => b.timestamp - a.timestamp));
     });
     return () => unsubscribeNotifications();
@@ -2289,7 +2301,7 @@ export default function App() {
     const newNotifications: any[] = [];
 
     userCourses.forEach(course => {
-      course.lessons.forEach(lesson => {
+      (course.lessons || []).forEach(lesson => {
         if (!currentSeenLessons.has(lesson.id)) {
           currentSeenLessons.add(lesson.id);
           updatedUser = true;
@@ -2363,7 +2375,7 @@ export default function App() {
 
   // Heartbeat to update lastSeen and check if user still exists
   useEffect(() => {
-    if (!user) return;
+    if (!user || !user.phone) return;
 
     // 1. Subscribe to user document for real-time updates (exam resets, etc.)
     const unsubscribe = onSnapshot(doc(db, 'users', user.phone), (snapshot) => {
@@ -2455,7 +2467,7 @@ export default function App() {
       }} />;
       case 'exam-view': {
         const exam = exams.find(e => e.id === selectedExamId);
-        if (!exam && isDataLoaded && exams.length > 0) {
+        if (!exam && isDataLoaded) {
           setTimeout(() => setCurrentPage('exams'), 0);
           return null;
         }
@@ -2463,7 +2475,7 @@ export default function App() {
       }
       case 'course-view': {
         const course = courses.find(c => c.id === selectedCourseId);
-        if (!course && isDataLoaded && courses.length > 0) {
+        if (!course && isDataLoaded) {
           setTimeout(() => setCurrentPage('courses'), 0);
           return null;
         }

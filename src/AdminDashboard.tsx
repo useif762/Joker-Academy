@@ -79,7 +79,7 @@ const AdminDashboard = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     // Simple password check
-    if (password === "Joker_Academy_Admin_2026_#Secure!0223190#1319/257") {
+    if (password === "admin1349#257!") {
       setIsAuthorized(true);
       localStorage.setItem('admin_authorized', 'true');
       setError("");
@@ -972,7 +972,7 @@ const AdminDashboard = () => {
                       </div>
                       <div>
                         <p className="font-bold">{course.title}</p>
-                        <p className="text-xs text-slate-400">{course.lessons.length} درس</p>
+                        <p className="text-xs text-slate-400">{(course.lessons || []).length} درس</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${course.isPublished ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
                           {course.isPublished ? 'منشور' : 'مسودة'}
                         </span>
@@ -1519,7 +1519,7 @@ const AdminDashboard = () => {
                       </div>
                       <div>
                         <p className="font-bold">{exam.title}</p>
-                        <p className="text-xs text-slate-400">{exam.questions.length} سؤال • {exam.duration || 30} دقيقة • {exam.totalScore || 100} درجة</p>
+                        <p className="text-xs text-slate-400">{(exam.questions || []).length} سؤال • {exam.duration || 30} دقيقة • {exam.totalScore || 100} درجة</p>
                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${exam.isPublished ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-500'}`}>
                           {exam.isPublished ? 'منشور' : 'مسودة'}
                         </span>
@@ -1791,7 +1791,7 @@ const AdminDashboard = () => {
                     const exam = exams.find(e => e.id === selectedResult.result.examId);
                     if (!exam) return <p className="text-center text-slate-400">لم يتم العثور على بيانات الامتحان الأصلي</p>;
 
-                    return exam.questions.map((q, idx) => {
+                    return (exam.questions || []).map((q, idx) => {
                       const answer = selectedResult.result.answers.find((a: any) => a.questionId === q.id);
                       const isCorrect = answer?.isCorrect;
                       
