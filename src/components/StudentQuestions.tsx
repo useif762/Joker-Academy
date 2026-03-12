@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { subscribeToCollection, updateDocument } from '../services/db';
+import { subscribeToCollection, updateDocument, saveDocument, deleteDocument } from '../services/db';
+import { Trash2 } from 'lucide-react';
 
 export const StudentQuestions = ({ courses }: { courses: any[] }) => {
   const [comments, setComments] = useState<any[]>([]);
@@ -39,10 +40,32 @@ export const StudentQuestions = ({ courses }: { courses: any[] }) => {
 
     try {
       await updateDocument('lesson_comments', commentId, { replies: updatedReplies });
+      
+      // Send notification to student
+      if (comment.userId !== 'admin') {
+        await saveDocument('notifications', Date.now().toString(), {
+          userId: comment.userId,
+          message: `قام المدرس بالرد على سؤالك في الدرس: "${comment.text.substring(0, 20)}..."`,
+          timestamp: Date.now(),
+          read: false
+        });
+      }
+
       setReplyingTo(null);
       setReplyText('');
     } catch (error) {
       console.error('Error adding reply:', error);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا السؤال؟')) {
+      try {
+        await deleteDocument('lesson_comments', commentId);
+      } catch (error) {
+        console.error('Error deleting comment:', error);
+        alert('فشل حذف السؤال');
+      }
     }
   };
 
@@ -68,7 +91,16 @@ export const StudentQuestions = ({ courses }: { courses: any[] }) => {
                 )}
                 <p className="text-sm text-primary font-bold mt-1">الدرس: {lesson?.title || 'غير معروف'} - {course?.title || 'غير معروف'}</p>
               </div>
-              <span className="text-xs text-slate-400">{new Date(comment.timestamp).toLocaleDateString('ar-EG')}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">{new Date(comment.timestamp).toLocaleDateString('ar-EG')}</span>
+                <button 
+                  onClick={() => handleDeleteComment(comment.id)}
+                  className="text-red-400 hover:text-red-600 transition-colors"
+                  title="حذف السؤال"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
             <p className="text-slate-700 mb-4">{comment.text}</p>
             

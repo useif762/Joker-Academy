@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new Database('joker.db');
@@ -67,6 +68,25 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
+
+// --- Storage Info API ---
+app.get('/api/storage-info', (req, res) => {
+  try {
+    const dbPath = path.join(__dirname, 'joker.db');
+    const stats = fs.statSync(dbPath);
+    const sizeInBytes = stats.size;
+    const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+    res.json({
+      sizeInBytes,
+      sizeInMB,
+      limitMB: 5120, // 5GB limit
+      usagePercentage: ((sizeInBytes / (5120 * 1024 * 1024)) * 100).toFixed(2)
+    });
+  } catch (error) {
+    console.error('Error getting storage info:', error);
+    res.status(500).json({ error: 'Could not get storage info' });
+  }
+});
 
 // --- Users API ---
 
@@ -142,6 +162,18 @@ app.delete('/api/users/:phone', (req, res) => {
     }
   } catch (error) {
     console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Database error' });
+  }
+});
+
+// Delete All Users
+app.delete('/api/users', (req, res) => {
+  try {
+    const stmt = db.prepare('DELETE FROM users');
+    stmt.run();
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting all users:', error);
     res.status(500).json({ error: 'Database error' });
   }
 });

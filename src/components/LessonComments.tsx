@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { subscribeToCollection, saveDocument, updateDocument } from '../services/db';
-import { User, Reply as ReplyIcon } from 'lucide-react';
+import { subscribeToCollection, saveDocument, updateDocument, deleteDocument } from '../services/db';
+import { User, Reply as ReplyIcon, Trash2 } from 'lucide-react';
 
 interface Reply {
   id: string;
@@ -89,7 +89,7 @@ export const LessonComments = ({ lessonId, user }: { lessonId: string, user: any
       if (user.role === 'admin' && comment.userId !== user.phone) {
         await saveDocument('notifications', Date.now().toString(), {
           userId: comment.userId,
-          message: `قام المدرس بالرد على سؤالك في الدرس`,
+          message: `قام المدرس بالرد على سؤالك في الدرس: "${comment.text.substring(0, 20)}..."`,
           timestamp: Date.now(),
           read: false
         });
@@ -99,6 +99,17 @@ export const LessonComments = ({ lessonId, user }: { lessonId: string, user: any
       setReplyText('');
     } catch (error) {
       console.error('Error adding reply:', error);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (window.confirm('هل أنت متأكد من حذف هذا التعليق؟')) {
+      try {
+        await deleteDocument('lesson_comments', commentId);
+      } catch (error) {
+        console.error('Error deleting comment:', error);
+        alert('فشل حذف التعليق');
+      }
     }
   };
 
@@ -145,14 +156,25 @@ export const LessonComments = ({ lessonId, user }: { lessonId: string, user: any
             <div key={comment.id} className="flex flex-col gap-4">
               <div className="flex gap-4">
                 <div className="w-12 h-12 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center shrink-0 font-bold">
-                  {comment.userName.charAt(0)}
+                  {comment.userName?.charAt(0) || '?'}
                 </div>
                 <div className="flex-1 bg-slate-50 p-4 rounded-2xl rounded-tr-none">
                   <div className="flex justify-between items-start mb-2">
                     <h4 className="font-bold text-sm">{comment.userName}</h4>
-                    <span className="text-xs text-slate-400">
-                      {new Date(comment.timestamp).toLocaleDateString('ar-EG')}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">
+                        {new Date(comment.timestamp).toLocaleDateString('ar-EG')}
+                      </span>
+                      {user && user.role === 'admin' && (
+                        <button 
+                          onClick={() => handleDeleteComment(comment.id)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="حذف التعليق"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">{comment.text}</p>
                   
@@ -173,7 +195,7 @@ export const LessonComments = ({ lessonId, user }: { lessonId: string, user: any
                   {comment.replies.map(reply => (
                     <div key={reply.id} className="flex gap-4">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold ${reply.isTeacher ? 'bg-primary text-white' : 'bg-slate-100 text-slate-500'}`}>
-                        {reply.userName.charAt(0)}
+                        {reply.userName?.charAt(0) || '?'}
                       </div>
                       <div className={`flex-1 p-4 rounded-2xl rounded-tr-none ${reply.isTeacher ? 'bg-primary/5 border border-primary/10' : 'bg-slate-50'}`}>
                         <div className="flex justify-between items-start mb-2">

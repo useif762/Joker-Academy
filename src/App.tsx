@@ -23,7 +23,7 @@ ChartJS.register(
 import { useState, useEffect, FormEvent, memo, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
-import { subscribeToCollection, saveDocument, getDocument, updateDocument } from './services/db';
+import { subscribeToCollection, saveDocument, getDocument, updateDocument, mergeDocument } from './services/db';
 import { db } from './firebase';
 import { onSnapshot, doc } from 'firebase/firestore';
 import { motion, AnimatePresence } from "motion/react";
@@ -743,12 +743,6 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
         isCorrect: status === 'correct'
       }
     }));
-
-    // Auto-advance to next question if it exists, but don't finish
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-      setTextAnswer("");
-    }
   };
 
   const currentAnswer = currentQ ? userAnswers[currentQ.id] : null;
@@ -1008,7 +1002,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                     }`}
                   >
                     <span>{opt}</span>
-                    <span className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs ${
+                    <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] ${
                       userAnswers[currentQ.id]?.selectedOption === i 
                         ? 'border-white/50' 
                         : 'border-slate-200 group-hover:border-primary/30'
@@ -1413,7 +1407,7 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                           <iframe 
                             src={currentLesson.pdfUrl.includes('drive.google.com') 
                               ? currentLesson.pdfUrl.replace('/view', '/preview') 
-                              : `https://docs.google.com/viewer?url=${encodeURIComponent(currentLesson.pdfUrl)}&embedded=true`}
+                              : currentLesson.pdfUrl}
                             className="w-full h-full"
                             title="PDF Viewer"
                             loading="lazy"
@@ -1485,7 +1479,8 @@ const Leaderboard = memo(({ user }: { user: User | null }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = subscribeToCollection('users', (data) => {
+    const unsubscribe = subscribeToCollection('users', (data, fromCache) => {
+      if (fromCache && data.length === 0) return;
       const sortedUsers = (data as User[]).sort((a, b) => (b.points || 0) - (a.points || 0));
       setUsers(sortedUsers);
       setLoading(false);
@@ -1537,7 +1532,7 @@ const Leaderboard = memo(({ user }: { user: User | null }) => {
               </div>
               <div className="col-span-7 flex items-center gap-4">
                 <div className="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center font-bold text-lg">
-                  {u.name.charAt(0)}
+                  {u.name?.charAt(0) || '?'}
                 </div>
                 <div>
                   <p className="font-bold text-lg">{u.name}</p>
@@ -1909,7 +1904,7 @@ const Login = ({ setPage, onLogin }: { setPage: (p: Page) => void, onLogin: (u: 
         await saveDocument('users', newUser.phone, newUser);
         sessionStorage.removeItem('login_form_data');
         onLogin(newUser);
-        setPage('profile');
+        setTimeout(() => setPage('profile'), 100);
       } catch (e) {
         setErrorModal({ show: true, message: 'فشل إنشاء الحساب، يرجى التأكد من اتصالك بالإنترنت والمحاولة مرة أخرى', type: 'error' });
       }
@@ -1922,7 +1917,7 @@ const Login = ({ setPage, onLogin }: { setPage: (p: Page) => void, onLogin: (u: 
           if (user.password === formData.password) {
              sessionStorage.removeItem('login_form_data');
              onLogin(user);
-             setPage('profile');
+             setTimeout(() => setPage('profile'), 100);
           } else {
              setErrorModal({ show: true, message: 'كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى', type: 'error' });
           }
@@ -2208,66 +2203,142 @@ const LoadingScreen = () => (
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname !== '/') {
+      sessionStorage.setItem('joker_last_url', location.pathname + location.search);
+    }
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const savedUrl = sessionStorage.getItem('joker_last_url');
+    if (savedUrl && location.pathname === '/') {
+      navigate(savedUrl);
+    }
+  }, []);
   
   const currentPage = useMemo(() => {
     const path = location.pathname.replace(/^\//, '').split('?')[0];
     if (path === '' || path === 'home') {
-      return 'home';
+      return (sessionStorage.getItem('joker_page') as Page) || 'home';
     }
     return (path as Page) || 'home';
   }, [location.pathname]);
 
-  const setCurrentPage = (page: Page) => {
+  const setCurrentPage = (page: Page, params?: Record<string, string | number | null>) => {
+    sessionStorage.setItem('joker_page', page);
     const targetPath = page === 'home' ? '' : page;
-    const currentPath = location.pathname.replace(/^\//, '').split('?')[0];
-    if (currentPath !== targetPath) {
-      navigate(`/${targetPath}${location.search}`);
+    
+    const searchParams = new URLSearchParams(location.search);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null) searchParams.delete(key);
+        else searchParams.set(key, value.toString());
+      });
+    }
+
+    // Sync state with URL params for persistence
+    if (params && params.courseId !== undefined) setSelectedCourseId(params.courseId ? params.courseId.toString() : null);
+    if (params && params.examId !== undefined) setSelectedExamId(params.examId ? params.examId.toString() : null);
+    if (params && params.grade !== undefined) setSelectedGrade(params.grade ? params.grade.toString() : '1');
+    if (params && params.lessonIndex !== undefined) {
+      setSelectedLessonIndex(params.lessonIndex === null ? null : Number(params.lessonIndex));
+    }
+
+    const newSearch = searchParams.toString();
+    const targetUrl = `/${targetPath}${newSearch ? '?' + newSearch : ''}`;
+    
+    if (location.pathname + location.search !== targetUrl) {
+      navigate(targetUrl);
     }
   };
 
-  const [isLoading, setIsLoading] = useState(() => !sessionStorage.getItem('joker_loaded'));
+  const [isLoading, setIsLoading] = useState(() => {
+    const savedUser = sessionStorage.getItem('joker_user');
+    return !savedUser && !localStorage.getItem('joker_loaded');
+  });
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = localStorage.getItem('joker_user');
-    console.log('Initializing user from localStorage:', savedUser);
+    const savedUser = sessionStorage.getItem('joker_user');
     try {
       return savedUser ? JSON.parse(savedUser) : null;
     } catch (e) {
-      console.error('Failed to parse user from localStorage', e);
-      localStorage.removeItem('joker_user');
+      sessionStorage.removeItem('joker_user');
       return null;
     }
   });
+  
+  useEffect(() => {
+    const checkSession = async () => {
+      const savedUser = sessionStorage.getItem('joker_user');
+      console.log('checkSession: savedUser', savedUser);
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser);
+          console.log('checkSession: parsedUser', parsedUser);
+          if (parsedUser && parsedUser.phone) {
+            const freshUser = await getDocument<User>('users', parsedUser.phone);
+            if (freshUser) {
+              setUser(prev => (JSON.stringify(prev) !== JSON.stringify(freshUser) ? freshUser : prev));
+            } else {
+              sessionStorage.removeItem('joker_user');
+              setUser(null);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to restore session', e);
+          sessionStorage.removeItem('joker_user');
+          setUser(null);
+        }
+      }
+      setIsLoading(false);
+      localStorage.setItem('joker_loaded', 'true');
+      console.log('checkSession: joker_loaded set to true');
+    };
+    checkSession();
+  }, []);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [courses, setCourses] = useState<Course[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(() => localStorage.getItem('joker_selected_course'));
-  const [selectedExamId, setSelectedExamId] = useState<string | null>(() => localStorage.getItem('joker_selected_exam'));
-  const [selectedGrade, setSelectedGrade] = useState<string>(() => localStorage.getItem('joker_selected_grade') || '1');
+  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('courseId') || sessionStorage.getItem('joker_selected_course');
+  });
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('examId') || sessionStorage.getItem('joker_selected_exam');
+  });
+  const [selectedGrade, setSelectedGrade] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('grade') || sessionStorage.getItem('joker_selected_grade') || '1';
+  });
   const [selectedLessonIndex, setSelectedLessonIndex] = useState<number | null>(() => {
-    const saved = localStorage.getItem('joker_selected_lesson');
+    const params = new URLSearchParams(window.location.search);
+    const lessonParam = params.get('lessonIndex');
+    if (lessonParam !== null && lessonParam !== 'null') return parseInt(lessonParam);
+    const saved = sessionStorage.getItem('joker_selected_lesson');
     return saved ? parseInt(saved) : null;
   });
 
   useEffect(() => {
-    if (selectedCourseId) localStorage.setItem('joker_selected_course', selectedCourseId);
-    else localStorage.removeItem('joker_selected_course');
+    if (selectedCourseId) sessionStorage.setItem('joker_selected_course', selectedCourseId);
+    else sessionStorage.removeItem('joker_selected_course');
   }, [selectedCourseId]);
 
   useEffect(() => {
-    if (selectedExamId) localStorage.setItem('joker_selected_exam', selectedExamId);
-    else localStorage.removeItem('joker_selected_exam');
+    if (selectedExamId) sessionStorage.setItem('joker_selected_exam', selectedExamId);
+    else sessionStorage.removeItem('joker_selected_exam');
   }, [selectedExamId]);
 
   useEffect(() => {
-    localStorage.setItem('joker_selected_grade', selectedGrade);
+    sessionStorage.setItem('joker_selected_grade', selectedGrade);
   }, [selectedGrade]);
 
   useEffect(() => {
-    if (selectedLessonIndex !== null) localStorage.setItem('joker_selected_lesson', selectedLessonIndex.toString());
-    else localStorage.removeItem('joker_selected_lesson');
+    if (selectedLessonIndex !== null) sessionStorage.setItem('joker_selected_lesson', selectedLessonIndex.toString());
+    else sessionStorage.removeItem('joker_selected_lesson');
   }, [selectedLessonIndex]);
 
   useEffect(() => {
@@ -2278,7 +2349,7 @@ export default function App() {
     if (isLoading) {
       const timer = setTimeout(() => {
         setIsLoading(false);
-        sessionStorage.setItem('joker_loaded', 'true');
+        localStorage.setItem('joker_loaded', 'true');
       }, 1500);
       return () => clearTimeout(timer);
     }
@@ -2305,11 +2376,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribeCourses = subscribeToCollection('courses', (data) => {
+    const unsubscribeCourses = subscribeToCollection('courses', (data, fromCache) => {
+      if (fromCache && data.length === 0) return; // Ignore empty cache to prevent premature redirects
       setCourses(data as Course[]);
       setCoursesLoaded(true);
     });
-    const unsubscribeExams = subscribeToCollection('exams', (data) => {
+    const unsubscribeExams = subscribeToCollection('exams', (data, fromCache) => {
+      if (fromCache && data.length === 0) return; // Ignore empty cache to prevent premature redirects
       setExams(data as Exam[]);
       setExamsLoaded(true);
     });
@@ -2321,16 +2394,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const unsubscribeNotifications = subscribeToCollection('notifications', (data) => {
-      const userNotifications = (data || []).filter((n: any) => !n.userId || (user && n.userId === user.phone));
+    const unsubscribeNotifications = subscribeToCollection('notifications', (data, fromCache) => {
+      if (fromCache && data.length === 0) return;
+      const userNotifications = (data || []).filter((n: any) => {
+        // Direct notification to a specific user
+        if (n.userId) return user && n.userId === user.phone;
+        
+        // Global notification with target grade
+        if (n.targetGrade) {
+          if (n.targetGrade === 'all') return true;
+          return user && n.targetGrade === user.grade;
+        }
+        
+        // Fallback for old notifications (show to all)
+        return true;
+      });
       setNotifications(userNotifications.sort((a: any, b: any) => b.timestamp - a.timestamp));
     });
     return () => unsubscribeNotifications();
   }, [user]);
 
   useEffect(() => {
-    console.log('location.pathname:', location.pathname);
     window.scrollTo(0, 0);
+    const lastActivity = sessionStorage.getItem('joker_last_activity');
+    if (lastActivity && Date.now() - parseInt(lastActivity) > 3600000) {
+      handleLogout();
+    }
+    sessionStorage.setItem('joker_last_activity', Date.now().toString());
   }, [currentPage]);
 
   useEffect(() => {
@@ -2396,7 +2486,7 @@ export default function App() {
           }
           await saveDocument('users', newUser.phone, newUser);
           setUser(newUser);
-          localStorage.setItem('joker_user', JSON.stringify(newUser));
+          sessionStorage.setItem('joker_user', JSON.stringify(newUser));
         } catch (e) {
           console.error('Failed to save notifications or user', e);
         }
@@ -2407,8 +2497,13 @@ export default function App() {
   }, [courses, exams, user]);
 
   const handleLogin = async (u: User) => {
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('joker_')) {
+        sessionStorage.removeItem(key);
+      }
+    });
     setUser(u);
-    localStorage.setItem('joker_user', JSON.stringify(u));
+    sessionStorage.setItem('joker_user', JSON.stringify(u));
     
     // Update user on server
     try {
@@ -2423,10 +2518,15 @@ export default function App() {
     if (!user || !user.phone) return;
 
     // 1. Subscribe to user document for real-time updates (exam resets, etc.)
-    const unsubscribe = onSnapshot(doc(db, 'users', user.phone), (snapshot) => {
+    const unsubscribe = onSnapshot(doc(db, 'users', user.phone), (snapshot: any) => {
       if (!snapshot.exists()) {
-        // لا تقم بتسجيل الخروج إذا لم يوجد المستند، قد يكون خطأ في الشبكة
-        console.warn('User document not found, skipping logout.');
+        // If the snapshot is from cache, ignore it (it might just be empty locally)
+        if (snapshot.metadata.fromCache) {
+          return;
+        }
+        // Log out the user if the document is deleted on the server
+        console.warn('User document not found, logging out.');
+        handleLogout();
         return;
       }
       
@@ -2442,14 +2542,16 @@ export default function App() {
       if (needsUpdate) {
         console.log('Syncing user data from Firestore...');
         setUser({ ...remoteUser });
-        localStorage.setItem('joker_user', JSON.stringify(remoteUser));
+        sessionStorage.setItem('joker_user', JSON.stringify(remoteUser));
       }
     });
 
     // 2. Periodic heartbeat to update lastSeen
     const updatePresence = async () => {
       try {
-        await updateDocument('users', user.phone, { lastSeen: Date.now() });
+        // Use mergeDocument instead of updateDocument to avoid error if document is missing
+        // and avoid overwriting other fields with stale data from closure
+        await mergeDocument('users', user.phone, { lastSeen: Date.now() });
       } catch (e) {
         console.error("Heartbeat failed", e);
       }
@@ -2469,7 +2571,12 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('joker_user');
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('joker_')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+    localStorage.removeItem('joker_loaded');
     setCurrentPage('home');
   };
 
@@ -2482,16 +2589,14 @@ export default function App() {
     }
     
     switch (currentPage) {
-      case 'home': return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setSelectedGrade(g); setCurrentPage('curriculum'); }} />;
-      case 'courses': return <Courses setPage={setCurrentPage} courses={courses} onSelectCourse={(id) => { setSelectedCourseId(id); setSelectedLessonIndex(null); setCurrentPage('course-view'); }} user={user} />;
-      case 'exams': return <Exams setPage={setCurrentPage} exams={exams} onSelectExam={(id) => { setSelectedExamId(id); setCurrentPage('exam-view'); }} user={user} />;
+      case 'home': return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setCurrentPage('curriculum', { grade: g }); }} />;
+      case 'courses': return <Courses setPage={setCurrentPage} courses={courses} onSelectCourse={(id) => { setCurrentPage('course-view', { courseId: id, lessonIndex: null }); }} user={user} />;
+      case 'exams': return <Exams setPage={setCurrentPage} exams={exams} onSelectExam={(id) => { setCurrentPage('exam-view', { examId: id }); }} user={user} />;
       case 'leaderboard': return <Leaderboard user={user} />;
       case 'profile': return <Profile user={user} exams={exams} courses={courses} />;
       case 'login': return <Login setPage={setCurrentPage} onLogin={handleLogin} />;
       case 'curriculum': return <Curriculum courses={courses} selectedGrade={selectedGrade} onSelectLesson={(courseId, lessonIndex) => {
-        setSelectedCourseId(courseId);
-        setSelectedLessonIndex(lessonIndex);
-        setCurrentPage('course-view');
+        setCurrentPage('course-view', { courseId, lessonIndex });
       }} />;
       case 'exam-view': {
         const exam = exams.find(e => e.id === selectedExamId);
@@ -2499,15 +2604,15 @@ export default function App() {
           setTimeout(() => setCurrentPage('exams'), 0);
           return null;
         }
-        return <ExamView onBack={() => setCurrentPage('exams')} exam={exam || null} user={user} onUpdateUser={handleLogin} />;
+        return <ExamView onBack={() => setCurrentPage('exams', { examId: null })} exam={exam || null} user={user} onUpdateUser={handleLogin} />;
       }
       case 'course-view': {
         const course = courses.find(c => c.id === selectedCourseId);
         if (!course && coursesLoaded && !isLoading) {
-          setTimeout(() => setCurrentPage('courses'), 0);
+          setTimeout(() => setCurrentPage('courses', { courseId: null }), 0);
           return null;
         }
-        return <CourseView onBack={() => setCurrentPage('courses')} course={course || null} user={user} onUpdateUser={handleLogin} initialLessonIndex={selectedLessonIndex ?? undefined} />;
+        return <CourseView onBack={() => setCurrentPage('courses', { courseId: null, lessonIndex: null })} course={course || null} user={user} onUpdateUser={handleLogin} initialLessonIndex={selectedLessonIndex ?? undefined} />;
       }
       default: return <Home setPage={setCurrentPage} onViewCurriculum={(g) => { setSelectedGrade(g); setCurrentPage('curriculum'); }} />;
     }
@@ -2608,7 +2713,7 @@ export default function App() {
               </div>
             </div>
             <div className="text-center text-slate-500 text-sm">
-              <p>جميع الحقوق محفوظة لمنصة الجوكر التعليمية © 2024</p>
+              <p>جميع الحقوق محفوظة لمنصة الجوكر التعليمية © 2026</p>
             </div>
           </div>
         </footer>

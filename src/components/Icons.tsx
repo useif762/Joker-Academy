@@ -127,3 +127,43 @@ export const DarkMode = ({ className }: { className?: string }) => (
 export const LightMode = ({ className }: { className?: string }) => (
   <span className={`material-symbols-outlined ${className}`}>light_mode</span>
 );
+
+export const Delete = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>delete</span>
+);
+
+export const Edit = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>edit</span>
+);
+
+export const Add = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>add</span>
+);
+
+export const Save = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>save</span>
+);
+
+export const CloudUpload = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>cloud_upload</span>
+);
+
+export const People = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>people</span>
+);
+
+export const Notifications = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>notifications</span>
+);
+
+export const QuestionAnswer = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>question_answer</span>
+);
+
+export const Grade = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>grade</span>
+);
+
+export const Info = ({ className }: { className?: string }) => (
+  <span className={`material-symbols-outlined ${className}`}>info</span>
+);

@@ -4,6 +4,7 @@ import { Mail, Close, HistoryEdu } from './Icons';
 
 const Notifications = () => {
   const [message, setMessage] = useState('');
+  const [targetGrade, setTargetGrade] = useState('all');
   const [sending, setSending] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
 
@@ -23,6 +24,7 @@ const Notifications = () => {
         message,
         timestamp: Date.now(),
         read: false,
+        targetGrade, // Add target grade to notification
       });
       setMessage('');
       alert('تم إرسال الإشعار بنجاح!');
@@ -50,6 +52,31 @@ const Notifications = () => {
         <h2 className="text-2xl font-black mb-6 flex items-center gap-2">
           <Mail className="text-primary" /> إرسال إشعار جديد
         </h2>
+        
+        <div className="mb-6">
+          <label className="block text-sm font-bold mb-3 text-slate-600">اختيار الفئة المستهدفة:</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { id: 'all', label: 'الكل' },
+              { id: '1', label: '١ إعدادي' },
+              { id: '2', label: '٢ إعدادي' },
+              { id: '3', label: '٣ إعدادي' }
+            ].map((grade) => (
+              <button
+                key={grade.id}
+                onClick={() => setTargetGrade(grade.id)}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all border-2 ${
+                  targetGrade === grade.id 
+                    ? 'bg-primary border-primary text-white shadow-md shadow-primary/20' 
+                    : 'bg-white border-slate-100 text-slate-400 hover:border-primary/30'
+                }`}
+              >
+                {grade.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <textarea
           className="w-full p-4 bg-slate-50 rounded-xl outline-none focus:ring-2 focus:ring-primary transition-all text-right mb-4 font-bold"
           rows={4}
@@ -81,10 +108,22 @@ const Notifications = () => {
                   <Close className="text-xs" />
                   <span className="text-[10px] font-bold">حذف</span>
                 </button>
-                <p className="text-slate-700 font-bold mb-2 text-sm leading-relaxed">{notif.message}</p>
-                <p className="text-[10px] text-slate-400 font-bold">
-                  {new Date(notif.timestamp).toLocaleString('ar-EG')}
-                </p>
+                <div className="flex justify-between items-center mb-2">
+                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                     notif.targetGrade === 'all' ? 'bg-blue-100 text-blue-600' :
+                     notif.targetGrade === '1' ? 'bg-purple-100 text-purple-600' :
+                     notif.targetGrade === '2' ? 'bg-orange-100 text-orange-600' :
+                     'bg-emerald-100 text-emerald-600'
+                   }`}>
+                     {notif.targetGrade === 'all' ? 'مرسل للكل' : 
+                      notif.targetGrade === '1' ? '١ إعدادي' :
+                      notif.targetGrade === '2' ? '٢ إعدادي' : '٣ إعدادي'}
+                   </span>
+                   <span className="text-[10px] text-slate-400 font-bold">
+                     {new Date(notif.timestamp).toLocaleDateString('ar-EG')}
+                   </span>
+                </div>
+                <p className="text-slate-700 font-bold mb-1 text-sm leading-relaxed">{notif.message}</p>
               </div>
             ))
           ) : (

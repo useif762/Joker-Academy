@@ -1,5 +1,5 @@
 import { useState, ChangeEvent, useEffect, FormEvent, useMemo } from "react";
-import { subscribeToCollection, saveDocument, deleteDocument } from './services/db';
+import { subscribeToCollection, saveDocument, deleteDocument, queryDocuments } from './services/db';
 import { storage } from './firebase';
 import { ref, uploadBytesResumable, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Link } from 'react-router-dom';
@@ -21,10 +21,20 @@ import {
   MilitaryTech,
   Lock,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  Delete,
+  Info,
+  Edit,
+  Add,
+  Save,
+  CloudUpload,
+  People,
+  Notifications as NotificationsIcon,
+  QuestionAnswer,
+  Grade
 } from "./components/Icons";
 
-type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions' | 'grading';
+type AdminTab = 'students' | 'courses' | 'exams' | 'edit-exam' | 'edit-course' | 'stats' | 'notifications' | 'questions' | 'grading' | 'storage';
 
 type Question = {
   id: string;
@@ -69,11 +79,50 @@ type Course = {
   grade?: string;
 };
 
+const StorageInfo = () => {
+  const [info, setInfo] = useState<{sizeInMB: string, limitMB: number, usagePercentage: string} | null>(null);
+
+  useEffect(() => {
+    fetch('/api/storage-info')
+      .then(res => res.json())
+      .then(data => setInfo(data))
+      .catch(err => console.error(err));
+  }, []);
+
+  if (!info) return <div className="animate-pulse h-24 bg-slate-100 rounded-2xl"></div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid md:grid-cols-3 gap-6">
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <p className="text-slate-500 text-sm font-bold mb-1">المساحة المستخدمة حالياً</p>
+          <p className="text-3xl font-black text-slate-900">{info.sizeInMB} ميجا</p>
+        </div>
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <p className="text-slate-500 text-sm font-bold mb-1">المساحة المتاحة (تقديرية)</p>
+          <p className="text-3xl font-black text-slate-900">{info.limitMB} ميجا</p>
+        </div>
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <p className="text-slate-500 text-sm font-bold mb-1">نسبة الاستهلاك</p>
+          <p className="text-3xl font-black text-primary">{info.usagePercentage}%</p>
+        </div>
+      </div>
+
+      <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
+        <div 
+          className="absolute inset-y-0 left-0 bg-primary transition-all duration-1000" 
+          style={{ width: `${info.usagePercentage}%` }}
+        ></div>
+      </div>
+    </div>
+  );
+};
+
 const AdminDashboard = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(() => {
-    return localStorage.getItem('admin_authorized') === 'true';
+    return sessionStorage.getItem('admin_authorized') === 'true';
   });
   const [error, setError] = useState("");
 
@@ -83,7 +132,7 @@ const AdminDashboard = () => {
     // Simple password check
     if (password === "admin1349#257!") {
       setIsAuthorized(true);
-      localStorage.setItem('admin_authorized', 'true');
+      sessionStorage.setItem('admin_authorized', 'true');
       setError("");
     } else {
       setError("كلمة المرور غير صحيحة");
@@ -92,7 +141,7 @@ const AdminDashboard = () => {
 
   const handleLogout = () => {
     setIsAuthorized(false);
-    localStorage.removeItem('admin_authorized');
+    sessionStorage.removeItem('admin_authorized');
     window.location.href = '/';
   };
 
@@ -152,7 +201,24 @@ const AdminDashboard = () => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('tab') as AdminTab) || 'students';
   });
-  const [gradingView, setGradingView] = useState<{grade: string | null, examId: string | null, questionId: string | null}>({grade: null, examId: null, questionId: null});
+
+  const [gradingView, setGradingView] = useState<{grade: string | null, examId: string | null, questionId: string | null}>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      grade: params.get('grade'),
+      examId: params.get('examId'),
+      questionId: params.get('questionId')
+    };
+  });
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', activeTab);
+    if (gradingView.grade) url.searchParams.set('grade', gradingView.grade); else url.searchParams.delete('grade');
+    if (gradingView.examId) url.searchParams.set('examId', gradingView.examId); else url.searchParams.delete('examId');
+    if (gradingView.questionId) url.searchParams.set('questionId', gradingView.questionId); else url.searchParams.delete('questionId');
+    window.history.replaceState({}, '', url.toString());
+  }, [activeTab, gradingView]);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
   const [selectedResult, setSelectedResult] = useState<{student: any, result: any} | null>(null);
@@ -190,12 +256,6 @@ const AdminDashboard = () => {
   };
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    params.set('tab', activeTab);
-    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-  }, [activeTab]);
-  
   // --- Students State ---
   const [students, setStudents] = useState<any[]>([]);
 
@@ -229,10 +289,12 @@ const AdminDashboard = () => {
   // --- Persistence ---
   useEffect(() => {
     setIsUploading(false);
-    const unsubscribeCourses = subscribeToCollection('courses', (data) => {
+    const unsubscribeCourses = subscribeToCollection('courses', (data, fromCache) => {
+      if (fromCache && data.length === 0) return;
       setCourses(data as Course[]);
     });
-    const unsubscribeExams = subscribeToCollection('exams', (data) => {
+    const unsubscribeExams = subscribeToCollection('exams', (data, fromCache) => {
+      if (fromCache && data.length === 0) return;
       setExams(data as Exam[]);
     });
 
@@ -249,7 +311,8 @@ const AdminDashboard = () => {
     
     // Only subscribe to users if we are on the students, stats, or grading tab
     if (activeTab === 'students' || activeTab === 'stats' || activeTab === 'grading') {
-      unsubscribeUsers = subscribeToCollection('users', (data) => {
+      unsubscribeUsers = subscribeToCollection('users', (data, fromCache) => {
+        if (fromCache && data.length === 0) return;
         setStudents(data);
       });
     }
@@ -263,65 +326,37 @@ const AdminDashboard = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // --- إعدادات Cloudinary ---
-    const CLOUD_NAME = "dp52lwhke"; 
-    const UPLOAD_PRESET = "ml_default"; 
-
-    const isVideo = file.type.startsWith('video/');
-    const isImage = file.type.startsWith('image/');
-    
     setIsUploading(true);
     setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', UPLOAD_PRESET);
-      // مهم جداً للسماح برفع الفيديوهات والـ PDF والصور في نفس الوقت
-      formData.append('resource_type', 'auto');
-
-      const xhr = new XMLHttpRequest();
-      // نستخدم الـ endpoint الصحيح لـ Cloudinary مع تحديد الـ resource_type في الـ FormData
-      xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`, true);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = (event.loaded / event.total) * 100;
-          setUploadProgress(Math.round(progress));
-        }
+      const metadata = {
+        contentType: file.type,
       };
+      const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
-      xhr.onload = () => {
-        const response = JSON.parse(xhr.responseText);
-        if (xhr.status === 200) {
-          onComplete(response.secure_url);
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(Math.round(progress));
+        }, 
+        (error) => {
+          console.error("Upload Error:", error);
+          alert(`فشل الرفع: ${error.message}`);
+          setIsUploading(false);
+          setUploadProgress(0);
+        }, 
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          onComplete(downloadURL);
           setIsUploading(false);
           setUploadProgress(0);
           alert("تم رفع الملف بنجاح! ✅");
-        } else {
-          console.error("Cloudinary Error Details:", response);
-          let errorMsg = "فشل الرفع.";
-          
-          if (response.error?.message.includes("Upload preset")) {
-            errorMsg = `خطأ: الـ Upload Preset اللي اسمه (${UPLOAD_PRESET}) مش موجود في حسابك أو مش معمول Unsigned. يرجى التأكد من الإعدادات في Cloudinary.`;
-          } else {
-            errorMsg = `فشل الرفع: ${response.error?.message || "خطأ غير معروف"}`;
-          }
-          
-          alert(errorMsg);
-          setIsUploading(false);
-          setUploadProgress(0);
         }
-      };
-
-      xhr.onerror = () => {
-        alert("حدث خطأ في الاتصال بالإنترنت.");
-        setIsUploading(false);
-        setUploadProgress(0);
-      };
-
-      xhr.send(formData);
+      );
     } catch (error) {
+      console.error("Unexpected Error:", error);
       alert("حدث خطأ غير متوقع.");
       setIsUploading(false);
       setUploadProgress(0);
@@ -348,14 +383,48 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDeleteStudent = async (phone: string, name: string) => {
+  const handleDeleteStudent = async (studentId: string, name: string) => {
+    if (!studentId) {
+      alert('لا يمكن حذف هذا الطالب لعدم وجود معرف صحيح.');
+      return;
+    }
     if (window.confirm(`هل أنت متأكد من حذف الطالب "${name}" نهائياً؟ سيتم حذف جميع بياناته ونتائجه.`)) {
       try {
-        await deleteDocument('users', phone);
-        const updatedStudents = students.filter(s => s.phone !== phone);
+        // 1. Delete user document
+        await deleteDocument('users', studentId);
+        
+        // 2. Delete user notifications
+        const userNotifications = await queryDocuments('notifications', 'userId', '==', studentId);
+        for (const n of userNotifications) {
+          await deleteDocument('notifications', n.id);
+        }
+
+        // 3. Delete user comments
+        const userComments = await queryDocuments('lesson_comments', 'userId', '==', studentId);
+        for (const c of userComments) {
+          await deleteDocument('lesson_comments', c.id);
+        }
+
+        const updatedStudents = students.filter(s => s.phone !== studentId && s.id !== studentId);
         setStudents(updatedStudents);
       } catch (e) {
+        console.error(e);
         alert('فشل حذف الطالب');
+      }
+    }
+  };
+
+  const handleDeleteAllStudents = async () => {
+    if (window.confirm('⚠️ تحذير: هل أنت متأكد من حذف جميع الطلاب المسجلين نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      try {
+        const response = await fetch('/api/users', { method: 'DELETE' });
+        if (!response.ok) throw new Error('Failed to delete all users');
+        
+        setStudents([]);
+        alert('تم حذف جميع الطلاب بنجاح');
+      } catch (e) {
+        console.error(e);
+        alert('فشل حذف جميع الطلاب');
       }
     }
   };
@@ -365,7 +434,10 @@ const AdminDashboard = () => {
     return Date.now() - lastSeen < 60000; // 1 minute threshold
   };
 
-  const filteredStudents = students.filter(s => s.phone && s.phone.includes(searchTerm));
+  const filteredStudents = students.filter(s => 
+    ((s.name || '').toLowerCase().includes(searchTerm.toLowerCase())) || 
+    ((s.phone || '').includes(searchTerm))
+  );
 
   const handleResetExam = async (studentId: string | number, examId: number) => {
     const student = students.find(s => s.phone === studentId || s.id === studentId);
@@ -387,6 +459,20 @@ const AdminDashboard = () => {
     }
   };
 
+  const sendGlobalNotification = async (message: string, userId?: string, targetGrade?: string) => {
+    try {
+      await saveDocument('notifications', Date.now().toString(), {
+        message,
+        timestamp: Date.now(),
+        read: false,
+        userId: userId || null,
+        targetGrade: targetGrade || 'all'
+      });
+    } catch (e) {
+      console.error('Failed to send global notification', e);
+    }
+  };
+
   const handleAddCourse = async () => {
     if (newCourse.title) {
       const course: Course = { 
@@ -397,6 +483,10 @@ const AdminDashboard = () => {
       };
       setCourses([...courses, course]);
       await saveDocument('courses', course.id, course);
+      
+      // Send notification for new course
+      await sendGlobalNotification(`تمت إضافة دورة جديدة: ${course.title}`, undefined, course.grade);
+      
       setNewCourse({ title: "", description: "", image: "", grade: "1" });
       alert("تمت إضافة الدورة بنجاح!");
     }
@@ -467,6 +557,10 @@ const AdminDashboard = () => {
         console.log("Saving course to DB:", updatedCourse);
         saveDocument('courses', updatedCourse.id, updatedCourse).then(() => {
           console.log("Course saved successfully");
+          // Send notification for new lesson if it's a new one
+          if (editingLessonIndex === null) {
+            sendGlobalNotification(`تمت إضافة درس جديد: ${cleanedLesson.title} في دورة ${updatedCourse.title}`, undefined, updatedCourse.grade);
+          }
         }).catch(err => {
           console.error("Failed to save course:", err);
           alert("فشل حفظ الدرس في قاعدة البيانات: " + err.message);
@@ -625,6 +719,7 @@ const AdminDashboard = () => {
             >
               تحديث البيانات
             </button>
+
             {/* Tabs Navigation */}
             <div className="flex flex-nowrap overflow-x-auto bg-white p-1 rounded-2xl shadow-sm border border-slate-100">
             <button 
@@ -669,6 +764,12 @@ const AdminDashboard = () => {
             >
               تصحيح الأسئلة
             </button>
+            <button 
+              onClick={() => setActiveTab('storage')}
+              className={`px-6 py-2 rounded-xl font-bold transition-all ${activeTab === 'storage' ? 'bg-amber-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              المساحة والتخزين
+            </button>
           </div>
         </div>
         {/* Debug Section */}
@@ -703,15 +804,24 @@ const AdminDashboard = () => {
               exit={{ opacity: 0, x: -20 }}
               className="space-y-6"
             >
-              <div className="relative w-full max-w-md mb-6">
-                <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="ابحث برقم الهاتف..." 
-                  className="w-full pr-12 pl-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary transition-all shadow-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div className="relative w-full max-w-md">
+                  <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="ابحث برقم الهاتف..." 
+                    className="w-full pr-12 pl-4 py-3 bg-white border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary transition-all shadow-sm"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                
+                <button 
+                  onClick={handleDeleteAllStudents}
+                  className="px-6 py-3 bg-red-500 text-white font-bold rounded-2xl hover:bg-red-600 transition-all flex items-center gap-2 shadow-lg shadow-red-200"
+                >
+                  <Delete /> حذف جميع الطلاب
+                </button>
               </div>
 
               <div className="grid gap-6">
@@ -735,7 +845,7 @@ const AdminDashboard = () => {
                                   <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">{student.studentId || 'N/A'}</span>
                                 </div>
                                 <button 
-                                  onClick={() => handleDeleteStudent(student.phone, student.name)}
+                                  onClick={() => handleDeleteStudent(student.phone || student.id, student.name)}
                                   className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors"
                                   title="حذف الطالب"
                                 >
@@ -1021,15 +1131,17 @@ const AdminDashboard = () => {
                               <button 
                                 onClick={async () => {
                                   if(window.confirm('هل أنت متأكد من إنهاء التصحيح وإرسال الإشعارات للطلاب؟')) {
+                                    const examTitle = gradeExams[id].title;
                                     const updatedStudents = students.map(student => {
                                       if (student.examResults?.some((r:any) => r.examId === id)) {
                                           const newNotification = {
                                               id: Date.now().toString() + Math.random(),
                                               title: 'تم تصحيح الامتحان',
-                                              message: `تم تصحيح إجاباتك لامتحان: ${gradeExams[id].title}. يمكنك الآن مراجعة نتيجتك النهائية.`,
+                                              message: `تم تصحيح إجاباتك لامتحان: ${examTitle}. يمكنك الآن مراجعة نتيجتك النهائية.`,
                                               date: new Date().toLocaleString('ar-EG'),
                                               read: false
                                           };
+                                          
                                           return {
                                               ...student,
                                               notifications: [newNotification, ...(student.notifications || [])]
@@ -1041,6 +1153,8 @@ const AdminDashboard = () => {
                                     for (const student of updatedStudents) {
                                         if (student.examResults?.some((r:any) => r.examId === id)) {
                                             await saveDocument('users', student.phone, student);
+                                            // Also send to global notifications collection for real-time update
+                                            await sendGlobalNotification(`تم تصحيح إجاباتك لامتحان: ${examTitle}. يمكنك الآن مراجعة نتيجتك النهائية.`, student.phone);
                                         }
                                     }
                                     alert('تم إرسال الإشعارات للطلاب بنجاح!');
@@ -1256,6 +1370,10 @@ const AdminDashboard = () => {
                           const updated = courses.map(c => c.id === course.id ? updatedCourse : c);
                           setCourses(updated);
                           await saveDocument('courses', course.id, updatedCourse);
+                          
+                          if (updatedCourse.isPublished) {
+                            await sendGlobalNotification(`تم نشر دورة جديدة: ${updatedCourse.title}`, undefined, updatedCourse.grade);
+                          }
                         }}
                         className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${course.isPublished ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}
                       >
@@ -1821,6 +1939,10 @@ const AdminDashboard = () => {
                           const updated = exams.map(e => e.id === exam.id ? updatedExam : e);
                           setExams(updated);
                           await saveDocument('exams', exam.id, updatedExam);
+                          
+                          if (updatedExam.isPublished) {
+                            await sendGlobalNotification(`تم نشر امتحان جديد: ${updatedExam.title}`, undefined, updatedExam.grade);
+                          }
                         }}
                         className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${exam.isPublished ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'}`}
                       >
@@ -2054,6 +2176,71 @@ const AdminDashboard = () => {
                     return acc + studentPoints;
                   }, 0)}
                 </p>
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'storage' && (
+            <motion.div 
+              key="storage"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-6"
+            >
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
+                    <Info className="text-3xl" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-800">حالة التخزين والمساحة</h2>
+                    <p className="text-slate-500 font-bold">إدارة مساحة المنصة وقواعد البيانات</p>
+                  </div>
+                </div>
+
+                <StorageInfo />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div className="bg-blue-50 p-8 rounded-3xl border border-blue-100">
+                  <h3 className="text-xl font-black text-blue-900 mb-4">كيف تزيد مساحة المنصة فعلياً؟</h3>
+                  <p className="text-blue-800 leading-relaxed mb-6 font-bold">
+                    المنصة الخاصة بك مرتبطة حالياً بمشروعك على <b>Firebase (Google)</b>. لزيادة المساحة، لا تحتاج لأي برمجة إضافية أو ربط معقد، كل ما عليك هو ترقية حسابك في جوجل باتباع هذه الخطوات:
+                  </p>
+                  <ul className="space-y-4 text-blue-900 font-bold">
+                    <li className="flex items-start gap-3">
+                      <span className="bg-blue-200 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-1">1</span>
+                      <span>افتح موقع <b>console.firebase.google.com</b> وسجل دخول بحساب جوجل الخاص بك.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="bg-blue-200 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-1">2</span>
+                      <span>اختر مشروعك الذي يحمل اسم <b>(joker-academy)</b>.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="bg-blue-200 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-1">3</span>
+                      <span>في القائمة الجانبية بالأسفل، اضغط على زر <b>Upgrade</b> أو <b>ترقية</b>.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="bg-blue-200 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0 mt-1">4</span>
+                      <span>اختر خطة <b>Blaze (Pay as you go)</b> وأضف بطاقتك البنكية.</span>
+                    </li>
+                  </ul>
+                  <div className="mt-6 p-4 bg-blue-100 rounded-2xl text-blue-800 font-bold">
+                    ✨ <b>ملاحظة هامة:</b> بمجرد الترقية، ستزيد المساحة <b>تلقائياً وفي نفس اللحظة</b> ولن تحتاج لعمل أي شيء هنا في المنصة، سيتم الربط فوراً.
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 p-8 rounded-3xl border border-amber-100">
+                  <h3 className="text-xl font-black text-amber-900 mb-4">نصائح هامة</h3>
+                  <p className="text-amber-800 leading-relaxed font-bold">
+                    ⚠️ لا ترفع فيديوهات مباشرة على الموقع أبداً؛ لأن الفيديو الواحد قد يستهلك 10% من مساحة المنصة بالكامل.
+                    <br /><br />
+                    ✅ ارفع الفيديوهات على قناتك في يوتيوب واجعلها "غير مدرجة" (Unlisted) ثم ضع الرابط في لوحة التحكم.
+                    <br /><br />
+                    ✅ ملفات الـ PDF والصور مساحتها صغيرة جداً ولا تقلق من رفعها مباشرة.
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
