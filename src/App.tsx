@@ -2272,6 +2272,7 @@ export default function App() {
   
   useEffect(() => {
     const checkSession = async () => {
+      const startTime = Date.now();
       console.log('Checking session...');
       const savedUser = localStorage.getItem('joker_user');
       if (savedUser) {
@@ -2296,6 +2297,14 @@ export default function App() {
       } else {
         console.log('No saved user found');
       }
+      
+      // Ensure minimum display time of 2 seconds
+      const elapsedTime = Date.now() - startTime;
+      const minDisplayTime = 2000;
+      if (elapsedTime < minDisplayTime) {
+        await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsedTime));
+      }
+      
       setIsLoading(false);
       sessionStorage.setItem('joker_loaded', 'true');
       console.log('Session check complete, loading set to false');
