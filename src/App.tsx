@@ -118,7 +118,7 @@ type Lesson = {
   title: string;
   duration: string;
   url: string;
-  type: 'youtube' | 'local';
+  type: 'youtube' | 'local' | 'drive';
   pdfUrl?: string;
   quiz?: Question[];
   quizDuration?: number;
@@ -577,6 +577,22 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
   const [timeLeft, setTimeLeft] = useState<number>((exam?.duration || 30) * 60);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
+  const userAnswersRef = useRef(userAnswers);
+  const textAnswerRef = useRef(textAnswer);
+  const currentQuestionRef = useRef(currentQuestion);
+
+  useEffect(() => {
+    userAnswersRef.current = userAnswers;
+  }, [userAnswers]);
+
+  useEffect(() => {
+    textAnswerRef.current = textAnswer;
+  }, [textAnswer]);
+
+  useEffect(() => {
+    currentQuestionRef.current = currentQuestion;
+  }, [currentQuestion]);
+
   const questions = exam?.questions || [];
   const currentQ = questions[currentQuestion];
 
@@ -636,8 +652,22 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
     const completedAnswers: {questionId: string, selectedOption: number | string, isCorrect: boolean, status: 'correct' | 'incorrect' | 'pending'}[] = [];
     let totalScore = 0;
     
-    questions.forEach((q) => {
-      const answer = userAnswers[q.id];
+    const currentAnsRef = userAnswersRef.current;
+    const currentTextRef = textAnswerRef.current;
+    const currentQIdx = currentQuestionRef.current;
+    
+    questions.forEach((q, idx) => {
+      let answer = currentAnsRef[q.id];
+      
+      // Auto-submit pending text answer for the current question if not already saved
+      if (idx === currentQIdx && !answer && currentTextRef.trim() && ['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || '')) {
+        answer = {
+          selectedOption: currentTextRef,
+          status: 'pending',
+          isCorrect: false
+        };
+      }
+      
       const questionScore = q.score || 1;
       
       if (answer) {
@@ -883,7 +913,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
           <div className="lg:col-span-1 order-2 lg:order-1">
             <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 sticky top-10">
               <h4 className="font-black text-lg mb-6 text-center">الأسئلة</h4>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-1.5">
                 {questions.map((_, i) => (
                   <button
                     key={i}
@@ -894,7 +924,7 @@ const ExamView = ({ onBack, exam, user, onUpdateUser }: { onBack: () => void, ex
                       setCurrentQuestion(i);
                       setTextAnswer("");
                     }}
-                    className={`aspect-square rounded-xl font-bold transition-all flex items-center justify-center border-2 ${
+                    className={`aspect-square rounded-lg text-sm font-bold transition-all flex items-center justify-center border-2 ${
                       currentQuestion === i 
                         ? 'bg-primary text-white border-primary shadow-lg scale-110 z-10' 
                         : userAnswers[questions[i].id] 
@@ -1353,12 +1383,22 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                 <iframe 
                   width="100%" 
                   height="100%" 
-                  src={`https://www.youtube.com/embed/${currentLesson.url}?enablejsapi=1`} 
+                  src={`https://www.youtube.com/embed/${currentLesson.url.includes('youtube.com') || currentLesson.url.includes('youtu.be') ? (currentLesson.url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/)?.[1] || currentLesson.url) : currentLesson.url}?enablejsapi=1`} 
                   title="YouTube video player" 
                   frameBorder="0" 
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                   allowFullScreen
                   id="youtube-player"
+                ></iframe>
+              ) : currentLesson.type === 'drive' && currentLesson.url ? (
+                <iframe 
+                  width="100%" 
+                  height="100%" 
+                  src={currentLesson.url.replace(/\/view.*$/, '/preview')} 
+                  title="Google Drive Video" 
+                  frameBorder="0" 
+                  allow="autoplay; fullscreen" 
+                  allowFullScreen
                 ></iframe>
               ) : currentLesson.type === 'local' && currentLesson.url ? (
                 <video 
@@ -1406,7 +1446,7 @@ const CourseView = ({ onBack, course, user, onUpdateUser, initialLessonIndex }: 
                         <div className="relative w-full h-[600px] rounded-xl border border-slate-200 bg-white overflow-hidden">
                           <iframe 
                             src={currentLesson.pdfUrl.includes('drive.google.com') 
-                              ? currentLesson.pdfUrl.replace('/view', '/preview') 
+                              ? currentLesson.pdfUrl.replace(/\/view.*$/, '/preview') 
                               : currentLesson.pdfUrl}
                             className="w-full h-full"
                             title="PDF Viewer"
@@ -2254,7 +2294,7 @@ export default function App() {
   };
 
   const [isLoading, setIsLoading] = useState(() => {
-    const loaded = sessionStorage.getItem('joker_loaded');
+    const loaded = localStorage.getItem('joker_loaded');
     console.log('Initial loading state check: joker_loaded =', loaded);
     return !loaded;
   });
@@ -2306,7 +2346,7 @@ export default function App() {
       }
       
       setIsLoading(false);
-      sessionStorage.setItem('joker_loaded', 'true');
+      localStorage.setItem('joker_loaded', 'true');
       console.log('Session check complete, loading set to false');
     };
     checkSession();
@@ -2589,12 +2629,12 @@ export default function App() {
     setUser(null);
     // Clear all joker-related items
     Object.keys(sessionStorage).forEach(key => {
-      if (key.startsWith('joker_')) {
+      if (key.startsWith('joker_') && key !== 'joker_loaded') {
         sessionStorage.removeItem(key);
       }
     });
     Object.keys(localStorage).forEach(key => {
-      if (key.startsWith('joker_')) {
+      if (key.startsWith('joker_') && key !== 'joker_loaded') {
         localStorage.removeItem(key);
       }
     });

@@ -61,7 +61,7 @@ type Lesson = {
   title: string;
   duration: string;
   url: string;
-  type: 'youtube' | 'local';
+  type: 'youtube' | 'local' | 'drive';
   pdfUrl?: string;
   quiz?: Question[];
   quizDuration?: number;
@@ -137,91 +137,7 @@ const StorageInfo = () => {
   );
 };
 
-const AdminDashboard = () => {
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isAuthorized, setIsAuthorized] = useState(() => {
-    const auth = sessionStorage.getItem('admin_authorized');
-    console.log('Admin auth state:', auth);
-    return auth === 'true';
-  });
-  const [error, setError] = useState("");
-
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('Login attempt with password:', password);
-    // Simple password check
-    if (password === "admin1349#257!") {
-      console.log('Login successful');
-      setIsAuthorized(true);
-      sessionStorage.setItem('admin_authorized', 'true');
-      setError("");
-    } else {
-      console.log('Login failed');
-      setError("كلمة المرور غير صحيحة");
-    }
-  };
-
-  const handleLogout = () => {
-    setIsAuthorized(false);
-    sessionStorage.removeItem('admin_authorized');
-    window.location.href = '/';
-  };
-
-  if (!isAuthorized) {
-    console.log('Admin not authorized, showing login');
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border border-slate-100"
-        >
-          <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
-            <Lock className="text-4xl" />
-          </div>
-          <h2 className="text-2xl font-black mb-2 text-slate-800">لوحة تحكم الجوكر</h2>
-          <p className="text-slate-500 mb-8 font-bold text-sm">يرجى إدخال كلمة مرور المشرف للمتابعة</p>
-          
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="relative">
-              <input 
-                type={showPassword ? "text" : "password"} 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="كلمة المرور"
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary font-bold text-center pr-12"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
-              >
-                {showPassword ? <VisibilityOff /> : <Visibility />}
-              </button>
-            </div>
-            {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
-            <button 
-              type="submit"
-              className="w-full py-4 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
-            >
-              دخول المشرف
-            </button>
-            <button 
-              type="button"
-              onClick={() => window.location.href = '/'}
-              className="w-full py-2 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
-            >
-              العودة للمنصة الرئيسية
-            </button>
-          </form>
-        </motion.div>
-      </div>
-    );
-  }
-
+const AdminDashboardContent = ({ handleLogout }: { handleLogout: () => void }) => {
   console.log('Admin authorized, rendering dashboard');
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -292,7 +208,7 @@ const AdminDashboard = () => {
     title: "", 
     duration: "", 
     url: "", 
-    type: 'youtube' as 'youtube' | 'local',
+    type: 'youtube' as 'youtube' | 'local' | 'drive',
     pdfUrl: ""
   });
   const [lessonQuizQuestions, setLessonQuizQuestions] = useState<Question[]>([]);
@@ -348,34 +264,61 @@ const AdminDashboard = () => {
     };
   }, [activeTab]);
 
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>, onComplete: (url: string) => void) => {
+  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>, onComplete: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
     setUploadProgress(0);
 
-    try {
-      const metadata = {
-        contentType: file.type,
-      };
-      const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
+    const metadata = {
+      contentType: file.type,
+    };
+    const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
-      // Use uploadBytes for a simpler, more stable upload process
-      console.log("Attempting uploadBytes for file:", file.name);
-      await uploadBytes(storageRef, file, metadata);
-      console.log("uploadBytes finished");
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      onComplete(downloadURL);
-      alert("تم رفع الملف بنجاح! ✅");
-    } catch (error) {
-      console.error("Upload Error:", error);
-      alert(`فشل الرفع: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
+    let progressStarted = false;
+    const timeoutId = setTimeout(() => {
+      if (!progressStarted) {
+        uploadTask.cancel();
+        alert("فشل الرفع: استغرق وقتاً طويلاً. يرجى التأكد من إعدادات CORS وقواعد الأمان (Storage Rules) في Firebase.");
+        setIsUploading(false);
+        setUploadProgress(0);
+      }
+    }, 15000);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        if (snapshot.bytesTransferred > 0) {
+          progressStarted = true;
+          clearTimeout(timeoutId);
+        }
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(Math.round(progress));
+        console.log('Upload is ' + progress + '% done');
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        console.error("Upload Error:", error);
+        alert(`فشل الرفع: ${error.message || 'خطأ غير معروف'}`);
+        setIsUploading(false);
+        setUploadProgress(0);
+      },
+      async () => {
+        clearTimeout(timeoutId);
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          onComplete(downloadURL);
+          alert("تم رفع الملف بنجاح! ✅");
+        } catch (error) {
+          console.error("Error getting download URL:", error);
+          alert("تم الرفع ولكن فشل الحصول على الرابط.");
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
+      }
+    );
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
@@ -383,16 +326,52 @@ const AdminDashboard = () => {
     const file = e.target.files?.[0];
     console.log("File selected:", file);
     if (file) {
-      // For smaller files like question images, we can still use base64 if needed, 
-      // but let's stick to storage for consistency if possible.
-      // For now, keeping this for quick question images.
-      if (file.size > 1 * 1024 * 1024) {
-        alert("حجم الملف كبير جداً للرفع المباشر! يرجى استخدام خاصية الرفع في الأعلى للملفات الكبيرة.");
+      if (!file.type.startsWith('image/')) {
+        alert('الرجاء اختيار صورة صالحة.');
         return;
       }
+      
       const reader = new FileReader();
       reader.onloadend = () => {
-        callback(reader.result as string);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Max dimensions
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 800;
+          
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG with 0.7 quality
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+          
+          // Check if still too large (Firestore limit is 1MB, we aim for < 800KB)
+          if (compressedBase64.length > 800 * 1024) {
+            alert("الصورة كبيرة جداً حتى بعد الضغط. يرجى اختيار صورة أصغر.");
+            return;
+          }
+          
+          callback(compressedBase64);
+        };
+        img.src = reader.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -1341,14 +1320,13 @@ const AdminDashboard = () => {
                         accept="image/*"
                         className="hidden"
                         id="course-image-upload"
-                        disabled={isUploading}
-                        onChange={(e) => handleFileUpload(e, (url) => setNewCourse({ ...newCourse, image: url }))}
+                        onChange={(e) => handleFileChange(e, (url) => setNewCourse({ ...newCourse, image: url }))}
                       />
                       <label 
                         htmlFor="course-image-upload"
-                        className={`flex-1 p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-center cursor-pointer hover:border-secondary transition-all text-sm text-slate-500 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex-1 p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-center cursor-pointer hover:border-secondary transition-all text-sm text-slate-500`}
                       >
-                        {isUploading ? `جاري الرفع... ${uploadProgress}%` : newCourse.image ? "تم اختيار صورة ✅" : "اضغط لرفع صورة الدورة"}
+                        {newCourse.image ? "تم اختيار صورة ✅" : "اضغط لرفع صورة الدورة"}
                       </label>
                       {newCourse.image && (
                         <img src={newCourse.image} alt="Preview" className="w-12 h-12 rounded-lg object-cover" />
@@ -1450,7 +1428,7 @@ const AdminDashboard = () => {
                           accept="image/*"
                           className="hidden"
                           id="edit-course-image"
-                          onChange={(e) => handleFileUpload(e, async (url) => {
+                          onChange={(e) => handleFileChange(e, async (url) => {
                             const updated = { ...editingCourse, image: url };
                             setEditingCourse(updated);
                             const updatedCourses = courses.map(c => c.id === updated.id ? updated : c);
@@ -1524,6 +1502,12 @@ const AdminDashboard = () => {
                         يوتيوب
                       </button>
                       <button 
+                        onClick={() => setNewLesson({...newLesson, type: 'drive'})}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${newLesson.type === 'drive' ? 'bg-white shadow-sm text-primary' : 'text-slate-400'}`}
+                      >
+                        جوجل درايف
+                      </button>
+                      <button 
                         onClick={() => setNewLesson({...newLesson, type: 'local'})}
                         className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${newLesson.type === 'local' ? 'bg-white shadow-sm text-primary' : 'text-slate-400'}`}
                       >
@@ -1533,13 +1517,14 @@ const AdminDashboard = () => {
 
                     <div>
                       <label className="block text-sm font-bold mb-2">
-                        {newLesson.type === 'youtube' ? 'رابط الفيديو' : 'رفع الفيديو'}
+                        {newLesson.type === 'youtube' ? 'رابط الفيديو (يوتيوب)' : newLesson.type === 'drive' ? 'رابط ملف جوجل درايف' : 'رفع الفيديو'}
                       </label>
-                      {newLesson.type === 'youtube' ? (
+                      {newLesson.type === 'youtube' || newLesson.type === 'drive' ? (
                         <input 
                           type="text" 
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-primary"
-                          placeholder="رابط يوتيوب"
+                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-primary text-left"
+                          dir="ltr"
+                          placeholder={newLesson.type === 'youtube' ? "رابط يوتيوب" : "رابط ملف جوجل درايف"}
                           value={newLesson.url}
                           onChange={(e) => setNewLesson({...newLesson, url: e.target.value})}
                         />
@@ -1559,6 +1544,9 @@ const AdminDashboard = () => {
                           >
                             {isUploading ? `جاري الرفع... ${uploadProgress}%` : newLesson.url ? "تم رفع الفيديو ✅" : "اضغط لرفع الفيديو"}
                           </label>
+                          <p className="text-[10px] text-slate-400 mt-2 text-center">
+                            ملاحظة: إذا واجهت مشكلة "جاري الرفع" لفترة طويلة، يرجى استخدام رابط يوتيوب بدلاً من الرفع المباشر.
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1576,21 +1564,34 @@ const AdminDashboard = () => {
                       </div>
                       <div>
                         <label className="block text-sm font-bold mb-2 text-slate-700">ملف PDF (اختياري)</label>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-col gap-2">
                           <input 
-                            type="file" 
-                            accept="application/pdf"
-                            className="hidden"
-                            id="lesson-pdf-upload"
-                            disabled={isUploading}
-                            onChange={(e) => handleFileUpload(e, (url) => setNewLesson(prev => ({ ...prev, pdfUrl: url })))}
+                            type="text" 
+                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-primary text-left text-xs"
+                            dir="ltr"
+                            placeholder="رابط ملف PDF (جوجل درايف أو رابط مباشر)"
+                            value={newLesson.pdfUrl || ""}
+                            onChange={(e) => setNewLesson({...newLesson, pdfUrl: e.target.value})}
                           />
-                          <label 
-                            htmlFor="lesson-pdf-upload"
-                            className={`flex-1 p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-center cursor-pointer hover:border-primary transition-all text-xs text-slate-500 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                          >
-                            {isUploading ? `جاري الرفع... ${uploadProgress}%` : newLesson.pdfUrl ? "تم اختيار ملف PDF ✅" : "اضغط لرفع ملخص PDF"}
-                          </label>
+                          <div className="relative">
+                            <input 
+                              type="file" 
+                              accept="application/pdf"
+                              className="hidden"
+                              id="lesson-pdf-upload"
+                              disabled={isUploading}
+                              onChange={(e) => handleFileUpload(e, (url) => setNewLesson(prev => ({ ...prev, pdfUrl: url })))}
+                            />
+                            <label 
+                              htmlFor="lesson-pdf-upload"
+                              className={`w-full p-3 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl text-center cursor-pointer hover:border-primary transition-all text-xs text-slate-500 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              {isUploading ? `جاري الرفع... ${uploadProgress}%` : (newLesson.pdfUrl && !newLesson.pdfUrl.startsWith('http')) ? "تم اختيار ملف PDF ✅" : "أو اضغط لرفع ملخص PDF من جهازك"}
+                            </label>
+                          </div>
+                          <p className="text-[10px] text-slate-400 text-center">
+                            يمكنك وضع رابط جوجل درايف للملف، أو رفعه مباشرة من جهازك.
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -2377,6 +2378,87 @@ const AdminDashboard = () => {
       </div>
     </div>
   );
+};
+
+const AdminDashboard = () => {
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(() => {
+    const auth = sessionStorage.getItem('admin_authorized');
+    return auth === 'true';
+  });
+  const [error, setError] = useState("");
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === "admin1349#257!") {
+      setIsAuthorized(true);
+      sessionStorage.setItem('admin_authorized', 'true');
+      setError("");
+    } else {
+      setError("كلمة المرور غير صحيحة");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthorized(false);
+    sessionStorage.removeItem('admin_authorized');
+    window.location.href = '/';
+  };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full border border-slate-100"
+        >
+          <div className="w-20 h-20 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto mb-6">
+            <Lock className="text-4xl" />
+          </div>
+          <h2 className="text-2xl font-black mb-2 text-slate-800">لوحة تحكم الجوكر</h2>
+          <p className="text-slate-500 mb-8 font-bold text-sm">يرجى إدخال كلمة مرور المشرف للمتابعة</p>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="كلمة المرور"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-primary font-bold text-center pr-12"
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
+              >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+              </button>
+            </div>
+            {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+            <button 
+              type="submit"
+              className="w-full py-4 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] transition-all"
+            >
+              دخول المشرف
+            </button>
+            <button 
+              type="button"
+              onClick={() => window.location.href = '/'}
+              className="w-full py-2 text-slate-400 font-bold text-sm hover:text-slate-600 transition-colors"
+            >
+              العودة للمنصة الرئيسية
+            </button>
+          </form>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return <AdminDashboardContent handleLogout={handleLogout} />;
 };
 
 export default AdminDashboard;
