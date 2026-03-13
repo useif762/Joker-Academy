@@ -2503,7 +2503,7 @@ export default function App() {
 
   const handleLogin = async (u: User) => {
     Object.keys(sessionStorage).forEach(key => {
-      if (key.startsWith('joker_')) {
+      if (key.startsWith('joker_') && key !== 'joker_loaded') {
         sessionStorage.removeItem(key);
       }
     });
