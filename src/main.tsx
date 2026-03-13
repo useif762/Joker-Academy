@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App.tsx';
 import AdminDashboard from './AdminDashboard.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
 import './index.css';
 
 if ('serviceWorker' in navigator) {
@@ -17,14 +18,16 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/joker-admin" element={<AdminDashboard />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/jokeradmin" element={<AdminDashboard />} />
-        <Route path="*" element={<App />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/joker-admin" element={<AdminDashboard />} />
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/jokeradmin" element={<AdminDashboard />} />
+          <Route path="*" element={<App />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   </StrictMode>
 );

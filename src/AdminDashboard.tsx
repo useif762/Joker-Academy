@@ -81,13 +81,32 @@ type Course = {
 
 const StorageInfo = () => {
   const [info, setInfo] = useState<{sizeInMB: string, limitMB: number, usagePercentage: string} | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/storage-info')
-      .then(res => res.json())
-      .then(data => setInfo(data))
-      .catch(err => console.error(err));
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch storage info');
+        return res.json();
+      })
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setInfo(data);
+        } else {
+          setError('Invalid data format');
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setError(err.message);
+      });
   }, []);
+
+  if (error) return (
+    <div className="p-6 bg-red-50 border border-red-100 rounded-2xl text-red-600 font-bold text-sm">
+      فشل تحميل معلومات التخزين: {error}
+    </div>
+  );
 
   if (!info) return <div className="animate-pulse h-24 bg-slate-100 rounded-2xl"></div>;
 
@@ -96,22 +115,22 @@ const StorageInfo = () => {
       <div className="grid md:grid-cols-3 gap-6">
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
           <p className="text-slate-500 text-sm font-bold mb-1">المساحة المستخدمة حالياً</p>
-          <p className="text-3xl font-black text-slate-900">{info.sizeInMB} ميجا</p>
+          <p className="text-3xl font-black text-slate-900">{info.sizeInMB || '0'} ميجا</p>
         </div>
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
           <p className="text-slate-500 text-sm font-bold mb-1">المساحة المتاحة (تقديرية)</p>
-          <p className="text-3xl font-black text-slate-900">{info.limitMB} ميجا</p>
+          <p className="text-3xl font-black text-slate-900">{info.limitMB || '0'} ميجا</p>
         </div>
         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
           <p className="text-slate-500 text-sm font-bold mb-1">نسبة الاستهلاك</p>
-          <p className="text-3xl font-black text-primary">{info.usagePercentage}%</p>
+          <p className="text-3xl font-black text-primary">{info.usagePercentage || '0'}%</p>
         </div>
       </div>
 
       <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
         <div 
           className="absolute inset-y-0 left-0 bg-primary transition-all duration-1000" 
-          style={{ width: `${info.usagePercentage}%` }}
+          style={{ width: `${parseFloat(info.usagePercentage || '0')}%` }}
         ></div>
       </div>
     </div>
@@ -122,19 +141,24 @@ const AdminDashboard = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(() => {
-    return sessionStorage.getItem('admin_authorized') === 'true';
+    const auth = sessionStorage.getItem('admin_authorized');
+    console.log('Admin auth state:', auth);
+    return auth === 'true';
   });
   const [error, setError] = useState("");
 
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Login attempt with password:', password);
     // Simple password check
     if (password === "admin1349#257!") {
+      console.log('Login successful');
       setIsAuthorized(true);
       sessionStorage.setItem('admin_authorized', 'true');
       setError("");
     } else {
+      console.log('Login failed');
       setError("كلمة المرور غير صحيحة");
     }
   };
@@ -146,6 +170,7 @@ const AdminDashboard = () => {
   };
 
   if (!isAuthorized) {
+    console.log('Admin not authorized, showing login');
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
         <motion.div 
@@ -197,6 +222,7 @@ const AdminDashboard = () => {
     );
   }
 
+  console.log('Admin authorized, rendering dashboard');
   const [activeTab, setActiveTab] = useState<AdminTab>(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get('tab') as AdminTab) || 'students';
@@ -334,30 +360,19 @@ const AdminDashboard = () => {
         contentType: file.type,
       };
       const storageRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(Math.round(progress));
-        }, 
-        (error) => {
-          console.error("Upload Error:", error);
-          alert(`فشل الرفع: ${error.message}`);
-          setIsUploading(false);
-          setUploadProgress(0);
-        }, 
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          onComplete(downloadURL);
-          setIsUploading(false);
-          setUploadProgress(0);
-          alert("تم رفع الملف بنجاح! ✅");
-        }
-      );
+      // Use uploadBytes for a simpler, more stable upload process
+      console.log("Attempting uploadBytes for file:", file.name);
+      await uploadBytes(storageRef, file, metadata);
+      console.log("uploadBytes finished");
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      onComplete(downloadURL);
+      alert("تم رفع الملف بنجاح! ✅");
     } catch (error) {
-      console.error("Unexpected Error:", error);
-      alert("حدث خطأ غير متوقع.");
+      console.error("Upload Error:", error);
+      alert(`فشل الرفع: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+    } finally {
       setIsUploading(false);
       setUploadProgress(0);
     }
@@ -434,10 +449,13 @@ const AdminDashboard = () => {
     return Date.now() - lastSeen < 60000; // 1 minute threshold
   };
 
-  const filteredStudents = students.filter(s => 
-    ((s.name || '').toLowerCase().includes(searchTerm.toLowerCase())) || 
-    ((s.phone || '').includes(searchTerm))
-  );
+  const filteredStudents = useMemo(() => {
+    if (!Array.isArray(students)) return [];
+    return students.filter(s => 
+      ((s?.name || '').toLowerCase().includes(searchTerm.toLowerCase())) || 
+      ((s?.phone || '').includes(searchTerm))
+    );
+  }, [students, searchTerm]);
 
   const handleResetExam = async (studentId: string | number, examId: number) => {
     const student = students.find(s => s.phone === studentId || s.id === studentId);
@@ -776,7 +794,7 @@ const AdminDashboard = () => {
         <div className="bg-yellow-50 p-4 rounded-xl mb-6 border border-yellow-200">
           <h3 className="font-bold text-yellow-800">Debug: عدد الطلاب في الذاكرة: {students.length}</h3>
           <div className="text-xs text-yellow-700 mt-2">
-            {students.map(s => s.name).join(', ')}
+            {students.map(s => s?.name || 'بدون اسم').join(', ')}
           </div>
         </div>
       </header>
@@ -898,7 +916,7 @@ const AdminDashboard = () => {
                             <Quiz className="text-accent text-2xl" />
                             <div>
                               <p className="text-xs text-slate-500">امتحانات تم حلها</p>
-                              <p className="text-xl font-black">{student.examResults?.filter((r: any) => !r.examId.toString().startsWith('lesson_quiz_')).length || 0}</p>
+                              <p className="text-xl font-black">{student.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === false).length || 0}</p>
                             </div>
                           </div>
                           <div className="bg-primary/10 p-4 rounded-2xl flex items-center gap-4 border border-primary/20">
@@ -909,11 +927,11 @@ const AdminDashboard = () => {
                                 {(() => {
                                   let points = 0;
                                   // Exams: 10 points each (not mini-quizzes)
-                                  const examsCount = student.examResults?.filter((r: any) => !r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+                                  const examsCount = student.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === false).length || 0;
                                   points += examsCount * 10;
                                   
                                   // Mini-quizzes: 5 points each
-                                  const miniQuizzesCount = student.examResults?.filter((r: any) => r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+                                  const miniQuizzesCount = student.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === true).length || 0;
                                   points += miniQuizzesCount * 5;
                                   
                                   // Lectures: 20 points each (if progress > 70%)
@@ -1039,7 +1057,7 @@ const AdminDashboard = () => {
 
                   (student.examResults || []).forEach((result: any) => {
                     const exam = exams.find(e => e.id === result.examId);
-                    if (!exam) return;
+                    if (!exam || !exam.questions) return;
                     
                     const hasEssayQuestions = exam.questions.some(q => ['text', 'prove', 'support-with-phrase', 'who-is-responsible', 'complete'].includes(q.type || ''));
                     if (!hasEssayQuestions) return;
@@ -1811,7 +1829,7 @@ const AdminDashboard = () => {
                           onClick={async () => {
                             const updatedCourse = {
                               ...editingCourse,
-                              lessons: editingCourse.lessons.map(l => l.id === lesson.id ? { ...l, isPublished: !l.isPublished } : l)
+                              lessons: (editingCourse.lessons || []).map(l => l.id === lesson.id ? { ...l, isPublished: !l.isPublished } : l)
                             };
                             setEditingCourse(updatedCourse);
                             const updatedCourses = courses.map(c => c.id === updatedCourse.id ? updatedCourse : c);
@@ -2017,7 +2035,7 @@ const AdminDashboard = () => {
                               if (newType === 'true-false') newOptions = ['صح', 'خطأ'];
                               if (newType === 'multiple-choice' && q.options.length < 4) newOptions = ['', '', '', ''];
                               
-                              const updatedQuestions = editingExam.questions.map(item => 
+                              const updatedQuestions = (editingExam.questions || []).map(item => 
                                 item.id === q.id ? { ...item, type: newType as any, options: newOptions, correctAnswer: 0 } : item
                               );
                               setEditingExam({ ...editingExam, questions: updatedQuestions });
@@ -2161,10 +2179,10 @@ const AdminDashboard = () => {
                   {students.reduce((acc, s) => {
                     let studentPoints = 0;
                     // Exams: 10
-                    const examsCount = s.examResults?.filter((r: any) => !r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+                    const examsCount = (s.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === false) || []).length;
                     studentPoints += examsCount * 10;
                     // Mini-quizzes: 5
-                    const miniQuizzesCount = s.examResults?.filter((r: any) => r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+                    const miniQuizzesCount = (s.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === true) || []).length;
                     studentPoints += miniQuizzesCount * 5;
                     // Lectures: 20 (if progress >= 70%)
                     const completedLessons = s.completedLessons || [];
@@ -2272,7 +2290,7 @@ const AdminDashboard = () => {
                     if (!exam) return <p className="text-center text-slate-400">لم يتم العثور على بيانات الامتحان الأصلي</p>;
 
                     return (exam.questions || []).map((q, idx) => {
-                      const answer = selectedResult.result.answers.find((a: any) => a.questionId === q.id);
+                      const answer = (selectedResult.result?.answers || []).find((a: any) => a.questionId === q.id);
                       const status = answer?.isCorrect ? 'correct' : 'incorrect';
                       
                       return (

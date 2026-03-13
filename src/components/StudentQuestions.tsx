@@ -73,8 +73,8 @@ export const StudentQuestions = ({ courses }: { courses: any[] }) => {
     <div className="space-y-6">
       <h2 className="text-2xl font-black">أسئلة الطلاب</h2>
       {comments.map(comment => {
-        const course = courses.find(c => c.lessons.some((l: any) => l.id === comment.lessonId));
-        const lesson = course?.lessons.find((l: any) => l.id === comment.lessonId);
+        const course = courses.find(c => c.lessons?.some((l: any) => l.id === comment.lessonId));
+        const lesson = course?.lessons?.find((l: any) => l.id === comment.lessonId);
         const student = users.find(u => u.phone === comment.userId);
         
         return (

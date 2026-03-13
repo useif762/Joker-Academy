@@ -1561,11 +1561,11 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
   const stats = useMemo(() => {
     let points = 0;
     // Exams: 10 points each (not mini-quizzes)
-    const examsCount = user?.examResults?.filter((r: any) => !r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+    const examsCount = (user?.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === false) || []).length;
     points += examsCount * 10;
     
     // Mini-quizzes: 5 points each
-    const miniQuizzesCount = user?.examResults?.filter((r: any) => r.examId.toString().startsWith('lesson_quiz_')).length || 0;
+    const miniQuizzesCount = (user?.examResults?.filter((r: any) => r?.examId?.toString().startsWith('lesson_quiz_') === true) || []).length;
     points += miniQuizzesCount * 5;
     
     // Lectures: 20 points each (if progress > 70%)
@@ -1612,7 +1612,7 @@ const Profile = memo(({ user, exams, courses }: { user: User | null, exams: Exam
             <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-full mx-auto mb-4 sm:mb-6 border-4 border-primary p-1">
               <img className="w-full h-full rounded-full object-cover" src={`https://picsum.photos/seed/${user?.phone}/200/200`} alt="Profile" referrerPolicy="no-referrer" loading="lazy" />
             </div>
-            <h2 className="text-xl sm:text-2xl font-black mb-1">{user?.name || 'طالب متميز'}</h2>
+            <h2 className="text-xl sm:text-2xl font-black mb-1">{user?.name || ''}</h2>
             <p className="text-slate-500 mb-4 font-bold text-sm sm:text-base">{user?.grade === '1' ? 'الصف الأول الإعدادي' : user?.grade === '2' ? 'الصف الثاني الإعدادي' : 'الصف الثالث الإعدادي'}</p>
             
             <div className="bg-slate-50 p-4 rounded-2xl mb-6 text-right space-y-2">
@@ -2254,47 +2254,59 @@ export default function App() {
   };
 
   const [isLoading, setIsLoading] = useState(() => {
-    const savedUser = sessionStorage.getItem('joker_user');
-    return !savedUser && !localStorage.getItem('joker_loaded');
+    const navigationEntries = performance.getEntriesByType("navigation");
+    const isReload = navigationEntries.length > 0 && (navigationEntries[0] as PerformanceNavigationTiming).type === "reload";
+    
+    if (isReload) {
+      console.log('Page reloaded, skipping loading screen');
+      return false;
+    }
+
+    const loaded = localStorage.getItem('joker_loaded');
+    console.log('Initial loading state check: joker_loaded =', loaded);
+    return !loaded;
   });
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(() => {
-    const savedUser = sessionStorage.getItem('joker_user');
+    const savedUser = localStorage.getItem('joker_user');
     try {
       return savedUser ? JSON.parse(savedUser) : null;
     } catch (e) {
-      sessionStorage.removeItem('joker_user');
+      localStorage.removeItem('joker_user');
       return null;
     }
   });
   
   useEffect(() => {
     const checkSession = async () => {
-      const savedUser = sessionStorage.getItem('joker_user');
-      console.log('checkSession: savedUser', savedUser);
+      console.log('Checking session...');
+      const savedUser = localStorage.getItem('joker_user');
       if (savedUser) {
+        console.log('Found saved user in localStorage');
         try {
           const parsedUser = JSON.parse(savedUser);
-          console.log('checkSession: parsedUser', parsedUser);
           if (parsedUser && parsedUser.phone) {
             const freshUser = await getDocument<User>('users', parsedUser.phone);
-            if (freshUser) {
+            if (freshUser && freshUser.phone === parsedUser.phone) {
+              console.log('Fresh user fetched');
               setUser(prev => (JSON.stringify(prev) !== JSON.stringify(freshUser) ? freshUser : prev));
+              localStorage.setItem('joker_user', JSON.stringify(freshUser));
             } else {
-              sessionStorage.removeItem('joker_user');
-              setUser(null);
+              console.log('User not found or phone mismatch, waiting...');
             }
           }
         } catch (e) {
           console.error('Failed to restore session', e);
-          sessionStorage.removeItem('joker_user');
+          localStorage.removeItem('joker_user');
           setUser(null);
         }
+      } else {
+        console.log('No saved user found');
       }
       setIsLoading(false);
       localStorage.setItem('joker_loaded', 'true');
-      console.log('checkSession: joker_loaded set to true');
+      console.log('Session check complete, loading set to false');
     };
     checkSession();
   }, []);
@@ -2341,19 +2353,11 @@ export default function App() {
     else sessionStorage.removeItem('joker_selected_lesson');
   }, [selectedLessonIndex]);
 
+  // Removed redundant loading timer
+
   useEffect(() => {
     // We no longer save joker_page to localStorage since we use URL routing
   }, [currentPage]);
-
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setIsLoading(false);
-        localStorage.setItem('joker_loaded', 'true');
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading]);
 
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [coursesLoaded, setCoursesLoaded] = useState(false);
@@ -2486,7 +2490,7 @@ export default function App() {
           }
           await saveDocument('users', newUser.phone, newUser);
           setUser(newUser);
-          sessionStorage.setItem('joker_user', JSON.stringify(newUser));
+          localStorage.setItem('joker_user', JSON.stringify(newUser));
         } catch (e) {
           console.error('Failed to save notifications or user', e);
         }
@@ -2503,7 +2507,13 @@ export default function App() {
       }
     });
     setUser(u);
-    sessionStorage.setItem('joker_user', JSON.stringify(u));
+    localStorage.setItem('joker_user', JSON.stringify(u));
+    
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('joker_') && key !== 'joker_user' && key !== 'joker_loaded') {
+        localStorage.removeItem(key);
+      }
+    });
     
     // Update user on server
     try {
@@ -2524,13 +2534,18 @@ export default function App() {
         if (snapshot.metadata.fromCache) {
           return;
         }
-        // Log out the user if the document is deleted on the server
-        console.warn('User document not found, logging out.');
-        handleLogout();
+        // Wait before logging out to handle temporary network issues
+        console.warn('User document not found, waiting...');
         return;
       }
       
       const remoteUser = { id: snapshot.id, ...snapshot.data() } as unknown as User;
+      
+      // Use snapshot.id as the phone number since it's the document ID
+      if (user && snapshot.id !== user.phone) {
+        console.error('Mismatch detected in onSnapshot, ignoring update', { snapshotId: snapshot.id, userPhone: user.phone });
+        return;
+      }
       
       // Check for updates from admin (e.g. exam reset)
       const localExams = user.examResults || [];
@@ -2542,7 +2557,7 @@ export default function App() {
       if (needsUpdate) {
         console.log('Syncing user data from Firestore...');
         setUser({ ...remoteUser });
-        sessionStorage.setItem('joker_user', JSON.stringify(remoteUser));
+        localStorage.setItem('joker_user', JSON.stringify(remoteUser));
       }
     });
 
@@ -2571,12 +2586,17 @@ export default function App() {
 
   const handleLogout = () => {
     setUser(null);
+    // Clear all joker-related items
     Object.keys(sessionStorage).forEach(key => {
       if (key.startsWith('joker_')) {
         sessionStorage.removeItem(key);
       }
     });
-    localStorage.removeItem('joker_loaded');
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('joker_')) {
+        localStorage.removeItem(key);
+      }
+    });
     setCurrentPage('home');
   };
 
