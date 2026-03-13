@@ -2254,15 +2254,7 @@ export default function App() {
   };
 
   const [isLoading, setIsLoading] = useState(() => {
-    const navigationEntries = performance.getEntriesByType("navigation");
-    const isReload = navigationEntries.length > 0 && (navigationEntries[0] as PerformanceNavigationTiming).type === "reload";
-    
-    if (isReload) {
-      console.log('Page reloaded, skipping loading screen');
-      return false;
-    }
-
-    const loaded = localStorage.getItem('joker_loaded');
+    const loaded = sessionStorage.getItem('joker_loaded');
     console.log('Initial loading state check: joker_loaded =', loaded);
     return !loaded;
   });
@@ -2305,7 +2297,7 @@ export default function App() {
         console.log('No saved user found');
       }
       setIsLoading(false);
-      localStorage.setItem('joker_loaded', 'true');
+      sessionStorage.setItem('joker_loaded', 'true');
       console.log('Session check complete, loading set to false');
     };
     checkSession();
